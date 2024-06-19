@@ -1,2 +1,2 @@
 # Dye et al. 2024 (Submitted to ESR)
-Data and scripts associated with "Assessment of genomic diversity within and between two cryptic shiners, *Notropis megalops* and *N. amabilis*." Kayla Dye, Andrew Fields, Megan Bean, Sarah Robertson, Chris Hollenbeck, Kevin Conway, and David Portnoy. Submitted to ESR.
+Data and scripts associated with "Assessment of genomic diversity within and between two cryptic shiners, the West Texas shiner (*Notropis megalops*) and the Texas shiner (*N. amabilis*)" Kayla R. Dye, Andrew T. Fields, Megan G. Bean, Sarah M. Robertson, Chris M. Hollenbeck, Kevin W. Conway, and David S. Portnoy. Submitted to Journal of Fish Biology.
