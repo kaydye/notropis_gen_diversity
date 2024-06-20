@@ -81,14 +81,15 @@ done
 #Adding the characterizations
 ```{bash}
 nano genotype_frequencies.txt
-```
-Pasted info
+
+Paste 
    5
  1_Bx      0.00000    0.250000    0.250000   0.50000
  0_Bx      0.50000    0.250000    0.250000   0.00000
  F1        0.00000     .5          .5        0.00000
  Pure_1    0.00000    0.00000     0.00000    1.00000
  Pure_0    1.00000    0.00000     0.00000    0.00000
+```
 
 #Running iterations
 ```{bash}
