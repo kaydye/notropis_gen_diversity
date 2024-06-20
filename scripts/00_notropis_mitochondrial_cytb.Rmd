@@ -1,7 +1,6 @@
 ---
-title: "Notropis_cytb_013024"
+title: "Notropis mitochondrial analysis and phylogenetic reconstruction"
 author: "K. Dye"
-date: "2024-01-30"
 output: html_document
 ---
 
