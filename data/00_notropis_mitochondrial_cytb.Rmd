@@ -13,7 +13,7 @@ unzip raw_seq_kd.zip
 
 #Geneious was used to align forward and reverse sequences (ab1 files) and create a consensus fasta file for each individual.
   #Some individuals were removed due to poor sequence quality
-    #NM-116, NM-230, NM-259, and NM-320 were removed
+    # NM-116, NM-230, NM-259, and NM-320 were removed
   #Consensus sequences are in /data/Notorpis_consensus_seqs
   #Outgroup fasta sequences obtained from GenBank, found in /data/Notropis_outgroup_seqs
 
@@ -69,10 +69,9 @@ awk '/^>/ {if (seq != "") {print substr(seq,27,length(seq)-55); seq="";} print; 
 ```
 *** Trimmed alignment contains 1,121 bp and 56 individuals + outgroups ***
 
-#Renamed individuals
-```{bash}
-trimmed_alignment.fasta > final_trim.fasta
-```
+##Renamed individuals manually for ease of identification
+  ##Reimported as final_trim.fasta
+
 
 #Run model test
 ```{bash}
@@ -82,7 +81,7 @@ modeltest−ng −i final_trim.fasta
 #Phylogenetic Reconstruction - Bayesian analysis
 
 #Beauti
- ##Run five times 
+ ## Run five times 
 ```{GUI}
 Use Beauti to make xml
     Import alignment final_trim.fasta
@@ -116,18 +115,18 @@ Weight:             0.5655
 ``` 
 
 #BEAST
-##Run on each xml file made using Beauti
+## Run on each xml file made using Beauti
 ```{GUI}
 open xml file : notropis_1
 Run
 ```
 
-#### Tracer
+#Tracer
 ```{GUI}
 #look at log file from each BEAST run 
 ```
 
-#### Tree Annotator
+#Tree Annotator
 ```{GUI}
 Maximum Clade Credibility Tree
 Node heights : mean heights
