@@ -51,7 +51,7 @@ cat Notropis_cytb_consensus_rename.fasta ../outgroups/*linear.fasta > all.fasta
 ```
 
 ###### Check alignment manually using UGene
-    * Reimport alignment as ugene_alignment.fasta
+   * Reimport alignment as ugene_alignment.fasta
 
 #### Trim
 ###### Linearize multi-fasta for trimming
@@ -64,7 +64,7 @@ awk '/^>/ {if (seq != "") {print seq; seq="";} print; next} {seq = seq $0} END {
 awk '/^>/ {if (seq != "") {print substr(seq,27,length(seq)-55); seq="";} print; next} {seq = seq $0} END {if (seq != "") print substr(seq,27,length(seq)-55)}' linear_alignment.fasta > trimmed_alignment.fasta
 ```
 
-***Trimmed alignment contains 1,121 bp and 56 individuals + outgroups***
+-![#1589F0] Trimmed alignment contains 1,121 bp and 56 individuals + outgroups `#1589F0`
 
 #### Run model test
 ```{bash}
