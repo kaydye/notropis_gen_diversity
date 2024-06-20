@@ -9,11 +9,11 @@ unzip raw_seq_kd.zip
 
 #### Geneious was used to align forward and reverse sequences (ab1 files), and create a consensus fasta file for each individual.
   * Some individuals were removed due to poor sequence quality
-    ###### removed NM-116, NM-230, NM-259, NM-320
+    ###### NM-116, NM-230, NM-259, and NM-320 were removed
   * Consensus sequences are in /data/Notorpis_consensus_seqs
   * Outgroup fasta sequences obtained from GenBank, found in /data/Notropis_outgroup_seqs
 
-# Remove header from outgroup fasta files
+#### Remove header from outgroup fasta files
 ```{bash}
 sed -i '1s/^>.*/>Agosia chrysogaster/' agosia_chrysogaster.fasta
 sed -i '1s/^>.*/>Notropis atherinoides/' notropis_atherinoides.fasta
@@ -26,54 +26,54 @@ sed -i '1s/^>.*/>Notropis stilbius/' notropis_stilbius.fasta
 sed -i '1s/^>.*/>Pimephales vigilax/' pimephales_vigilax.fasta
 ```
 
-#Create multi.fasta with all consensus sequences and outgroups
+#### Create multi.fasta with all consensus and outgroup sequences
 
-###Linearizing outgroup fasta files
+###### Linearizing outgroup fasta files
 ```{bash}
 for file in *.fasta; do
     sed -e 's/\(^>.*$\)/#\1#/' "$file" | tr -d "\r" | tr -d "\n" | sed -e 's/$/#/' | tr "#" "\n" | sed -e '/^$/d' > "${file%.fasta}_linear.fasta"
 done
 ```
 
-###Renaming of fasta files
+###### Renaming of fasta files
 ```{bash}
 cut -d " " -f1 Notropis_cytb_consensus.fasta | sed 's/Nucleotide_alignment_//g' > Notropis_cytb_consensus_rename.fasta
 ```
 
-###Create multi-fasta to be aligned
+###### Create multi-fasta to be aligned
 ```{bash}
 cat Notropis_cytb_consensus_rename.fasta ../outgroups/*linear.fasta > all.fasta
 ```
 
-#Align sequences using ClustalOmega
+#### Align sequences using ClustalOmega
 ```{bash}
 ../programs/bin/bin/clustalo -i all.fasta -o test.fasta --outfmt=fasta
 ```
 
-#Check alignment manually using UGene
-Reimport alignment as ugene_alignment.fasta
+###### Check alignment manually using UGene
+    * Reimport alignment as ugene_alignment.fasta
 
-#Trim
-###Linearize multi-fasta for trimming
+#### Trim
+###### Linearize multi-fasta for trimming
 ```{bash}
 awk '/^>/ {if (seq != "") {print seq; seq="";} print; next} {seq = seq $0} END {if (seq != "") print seq}' ugene_alignment.fasta > linear_alignment.fasta
 ```
 
-###Trim first 26 bases and last 29 bases off each sequence
+###### Trim first 26 bases and last 29 bases off each sequence
 ```{bash}
 awk '/^>/ {if (seq != "") {print substr(seq,27,length(seq)-55); seq="";} print; next} {seq = seq $0} END {if (seq != "") print substr(seq,27,length(seq)-55)}' linear_alignment.fasta > trimmed_alignment.fasta
 ```
 
 ***Trimmed alignment contains 1,121 bp and 56 individuals + outgroups***
 
-#Run model test
+#### Run model test
 ```{bash}
 modeltest−ng −i alignment_mega.fa 
 ```      
 
-#Phylogenetic Reconstruction (BEAST)
+##### Phylogenetic Reconstruction (BEAST)
 
-###Beauti - make xml 
+###### Beauti  
 ```{GUI}
 Use Beauti to make xml
     Import alignment alignment_mega.fa
@@ -102,21 +102,21 @@ Weight:             0.7341
     treelog : notropis_1
     
   File > save as > notropis_1.xml
-```  
+```
+###### run five times  
 
-###BEAST
+#### BEAST
 ```{GUI}
-#run five times to ensure trees all come out same 
 open xml file : notropis_1
 Run
 ```
 
-#Tracer
+#### Tracer
 ```{GUI}
 #look at log file from each BEAST run 
 ```
 
-#Tree Annotator
+#### Tree Annotator
 ```{GUI}
 Maximum Clade Credibility Tree
 Node heights : mean heights
