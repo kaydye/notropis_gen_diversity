@@ -1,21 +1,17 @@
----
-title: "notropis_mitochondrial_cytb"
-author: "K. Dye"
-date: "2024-01-30"
-output: html_document
----
+# Mitochondrial analysis and phylogenetic reconstruction using cytochrome *b*
 
-# Obtain data
+
+##### Obtain data
 ```{bash}
 unzip raw_seq_kd.zip
 ```
-# Should have a list of the ab1 files for the forward and reverse reads of each individual
+###### Should have a list of the ab1 files for the forward and reverse reads of each individual
 
-# Forward and reverse sequences (ab1 files) aligned using Geneious and consensus fasta files for each individual were made.
-  ## Some individuals were removed due to poor sequence quality
-    ### removed NM-116, NM-230, NM-259, NM-320
-  ## Consensus sequences are in /data/Notorpis_consensus_seqs
-  ## Outgroup fasta sequences obtained from GenBank, found in /data/Notropis_outgroup_seqs
+#### Geneious was used to align forward and reverse sequences (ab1 files), and create a consensus fasta file for each individual.
+  * Some individuals were removed due to poor sequence quality
+    ###### removed NM-116, NM-230, NM-259, NM-320
+  * Consensus sequences are in /data/Notorpis_consensus_seqs
+  * Outgroup fasta sequences obtained from GenBank, found in /data/Notropis_outgroup_seqs
 
 # Remove header from outgroup fasta files
 ```{bash}
