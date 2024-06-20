@@ -7,15 +7,8 @@ editor_options:
   chunk_output_type: console
 ---
 
-#Load Libraries
+#Load libraries and source functions
 ```{r load libraries, message=FALSE, warning=FALSE}
-source("/home/kdye/bin/libraries.R")
-source("/home/kdye/bin/ggplot.R")
-source("/home/kdye/bin/VCFfilterstats.R")
-source("/home/kdye/bin/HaplotypR.R")
-source("/home/kdye/bin/genind.R")
-source("/home/kdye/bin/PCA.R")
-
 library(tidyverse)
 library(dplyr)
 library(ggplot2)
@@ -30,21 +23,28 @@ library(zvau)
 library(base)
 library(vcfR)
 library(adegenet)
+
+source("/home/kdye/bin/libraries.R")
+source("/home/kdye/bin/ggplot.R")
+source("/home/kdye/bin/VCFfilterstats.R")
+source("/home/kdye/bin/HaplotypR.R")
+source("/home/kdye/bin/genind.R")
+source("/home/kdye/bin/PCA.R")
 ```
 
-#SNP FILTERING------------    
-###Copy vcf into directory
-```{bash}
-cp -s ../TotalRawSNPs* .
-```
+#SNP FILTERING------------ 
 
-###Charting the raw data
+#dDocent uses FreeBayes to call SNPs and write a VCF file `TotalRawSNPs.vcf`.
+## This dataset is filtered to remove low quality and artefactual SNP sites, and potential paralogs.
+## This dataset is also filtered to remove low quality individuals based on missing data, minimum/maximum read depth, and genotype call rates.
+## Because this is two separate ddRAD libraries combined, loci that are inconsistent across libraries (i.e. library effects) are also removed.
+
+#chart.sh on raw data
+# charts.sh script is run multiple times throughout the SNP filtering to closely assess filtering
 ```{bash}
 charts.sh TotalRawSNPs.vcf
 
 #297 individuals
-
-#DOC and GDL has individuals with high percent missing data. Fis is very high, centered around 0.6 with one individual (PR3_006) at -0.4. 
 ```
 
 #1. Split Multiallelic Freebayes calls
@@ -70,7 +70,7 @@ charts.sh SNP.TRS.dDocent.FIL.recode.vcf
 ```
 
 #5a. Cytb Individuals
-Select the individuals included in cyt b dataset and then separate by putative identified species
+## Select the individuals included in cyt b dataset and then separate by putative identified species
 
 ```{r}
 #cyt b inds
@@ -82,9 +82,14 @@ popdata.filt <- read.csv(file = "/home/kdye/Nmegalops/data/pop.data.csv", header
                      filter(INDV %in% cytb[,1])
 ```
 
-###NOTROPIS MEGALOPS
-Create N.megalops dataset
+#The dataset is now filtered to retain only the individuals putatively identified using cyt b
+#Once the vcf is split by putatively identified species, each separate dataset will be filtered for missing data
+  ## This is done to remove loci that are only found in one species or the other. (i.e. 90% missing in N. megalops would indicate it was a locus most likely found only in N. amabilis, vice versa).
+  ## We want to retain loci that are similar between the two species.
 
+
+#NOTROPIS MEGALOPS
+## Create N.megalops dataset
 ```{r}
 MegInds <- popdata.filt %>%
   filter(SPECIES == "megalops") %>%
@@ -98,16 +103,15 @@ col.names = FALSE, row.names = FALSE, quote = FALSE)
 
 length(MegInds) #31 N.megalops individuals
 ```
-
+## Filter vcf to retain only individuals identified as Notropis megalops using cyt b 
 ```{bash}
 vcftools --vcf SNP.TRS.dDocent.FIL.recode.vcf --out SNP.TRS.MEGA --keep meg_inds --recode --recode-INFO-all
 
 charts.sh SNP.TRS.MEGA.recode.vcf
 ```
 
-####Missing data >90% 
-90% missing data would indicate that it is a loci only present in the N.amabilis
-
+#Missing data >90% 
+## 90% missing data would indicate loci only present in N.amabilis (i.e. 90-100% missing in N.megalops)
 ```{bash}
 #output missing data file by site 
 vcftools --vcf SNP.TRS.MEGA.recode.vcf --out temp/SNP.TRS.MEGA --missing-site
@@ -124,9 +128,8 @@ remove_snps_meg <- lmiss %>%
 #7952 SNPs
 ```
 
-###NOTROPIS AMABILIS
-Create N.amabilis dataset
-
+#NOTROPIS AMABILIS
+## Create N.amabilis dataset
 ```{bash}
 AmaInds <- popdata.filt %>%
   filter(SPECIES == "amabilis") %>%
@@ -138,18 +141,17 @@ AmaInds <- AmaInds$INDV
 write.table(AmaInds, "/home/kdye/Nmegalops/filtering/notropis/040224/ama_inds",
 col.names = FALSE, row.names = FALSE, quote = FALSE)
 
-length(AmaInds) #25 N.amabilis individuals to be removed
-
+length(AmaInds) #25 N.amabilis individuals
+```
+## Filter vcf to retain only individuals identified as Notropis amabilis using cyt b 
+```{bash}
 vcftools --vcf SNP.TRS.dDocent.FIL.recode.vcf --out SNP.TRS.AMA --keep ama_inds --recode --recode-INFO-all
-
-#25 N.amabilis individuals
 
 charts.sh SNP.TRS.AMA.recode.vcf
 ```
 
-####Missing data >90% 
-90% missing data would indicate that it is a loci only present in the N.megalops (i.e. 90-100% missing in N.amabilis)
-
+#Missing data >90% 
+## 90% missing data would indicate that it is a loci only present in the N.megalops (i.e. 90-100% missing in N.amabilis)
 ```{bash}
 #output missing data file by site 
 vcftools --vcf SNP.TRS.AMA.recode.vcf --out temp/SNP.TRS.AMA --missing-site
@@ -166,8 +168,7 @@ remove_snps_ama <- lmiss %>%
 #19,111 SNPs
 ```
 
-Combine two tables of SNP locations from each species into one file to be removed from the joint dataset
-
+# Combine two tables of SNP locations from each species into one file to be removed from the joint dataset
 ```{r}
 remove_snps <- rbind(remove_snps_meg, remove_snps_ama)
 
@@ -178,7 +179,7 @@ write.table(remove_snps, file = "/home/kdye/Nmegalops/filtering/notropis/040224/
 ```
 
 #5b. >90% missing from either species
-Remove all snps that are only found in either species (i.e. has >90% missing data in megalops means it's only found in amabilis and vice versa)
+## Remove all snps that are only found in either species
 ```{bash}
 #Use the vcf file that was last created before splitting the dataset
 
@@ -188,7 +189,7 @@ grep "dDocent" SNP.TRS.BOTH.recode.vcf | cut -f 1,2 | uniq | tail -n +2 > contig
 ```
 
 #6. Singleton and Doubleton
-Filtering singleton and doubleton loci for depth (Singletons >20 reads; Doubletons > 10 reads)
+## Filtering singleton and doubleton loci for depth (Singletons >20 reads; Doubletons > 10 reads)
 ```{bash}
 vcftools --vcf SNP.TRS.BOTH.recode.vcf --out out --singletons
 
