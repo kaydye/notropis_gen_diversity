@@ -30,7 +30,7 @@ sed -i '1s/^>.*/>Notropis stilbius/' notropis_stilbius.fasta
 sed -i '1s/^>.*/>Pimephales vigilax/' pimephales_vigilax.fasta
 ```
 
-#Create multi.fasta with all consensus and outgroup sequences
+#Create multi fasta with all consensus and outgroup sequences
 
 ##Linearizing outgroup fasta files
 ```{bash}
@@ -44,14 +44,14 @@ done
 cut -d " " -f1 Notropis_cytb_consensus.fasta | sed 's/Nucleotide_alignment_//g' > Notropis_cytb_consensus_rename.fasta
 ```
 
-##Create multi-fasta to be aligned
+##Create multi fasta to be aligned
 ```{bash}
 cat Notropis_cytb_consensus_rename.fasta ../outgroups/*linear.fasta > all.fasta
 ```
 
 #Align sequences using ClustalOmega
 ```{bash}
-../programs/bin/bin/clustalo -i all.fasta -o test.fasta --outfmt=fasta
+../programs/bin/bin/clustalo -i all.fasta -o align.fasta --outfmt=fasta
 ```
 
 ##Check alignment manually using UGene
@@ -67,8 +67,12 @@ awk '/^>/ {if (seq != "") {print seq; seq="";} print; next} {seq = seq $0} END {
 ```{bash}
 awk '/^>/ {if (seq != "") {print substr(seq,27,length(seq)-55); seq="";} print; next} {seq = seq $0} END {if (seq != "") print substr(seq,27,length(seq)-55)}' linear_alignment.fasta > trimmed_alignment.fasta
 ```
-
 *** Trimmed alignment contains 1,121 bp and 56 individuals + outgroups ***
+
+#Renamed individuals
+```{bash}
+trimmed_alignment.fasta > final_trim.fasta
+```
 
 #Run model test
 ```{bash}
