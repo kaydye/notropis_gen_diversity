@@ -186,11 +186,11 @@ write.table(Groups, "/home/kdye/Nmegalops/diagnostic/amabilis_megalops_multiloci
 ```
 
 #Filter vcf
-## Make vcf containing just shared loci in amabilis_megalops_sites.txt
+## Make vcf containing just fixed, shared loci in amabilis_megalops_sites.txt
 ```{bash}
 vcftools --vcf notr_final.recode.vcf --out notr_diagSNPs --positions amabilis_megalops_sites.txt --recode --recode-INFO-all
 
-
+#Ensure no missing data
 vcftools --vcf notr_diagSNPs.recode.vcf --out temp/diag --missing-site
 vcftools --vcf notr_diagSNPs.recode.vcf --out temp/diag --missing-indv
 
