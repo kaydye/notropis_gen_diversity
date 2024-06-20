@@ -1,0 +1,312 @@
+---
+title: "Notropis Diagnostic SNPs"
+author: "K. Dye"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+#Diagnostic SNPs
+
+##Load libraries and source files
+```{r}
+library(vcfR)
+library(adegenet)
+library(dartR)
+library(zvau)
+library(ggcompoplot)
+
+source("/home/kdye/bin/VCFfilterstats.R")
+source("/home/kdye/bin/genind.R")
+source("/home/kdye/bin/PCA.R")
+source("/home/kdye/bin/libraries.R")
+source("/home/kdye/bin/ggplot.R")
+```
+
+#Load Data
+```{r}
+popdata <- read.csv(file = "/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE)
+
+vcf <- read.vcfR(file="/home/kdye/Nmegalops/genpops/notr_final.recode.vcf")
+gen.vcf <- vcfR2genind(vcf)
+
+#Add strata
+strata(gen.vcf) <- popdata[match(indNames(gen.vcf),popdata[,1]),]
+
+#Check strata
+head(gen.vcf@strata)
+
+rm(vcf)
+```
+
+1. Split species
+## Make independent datasets for each species
+```{r}
+Species <- names(table(popdata$SPECIES))
+for(i in Species){
+set.ind <- indNames(gen.vcf)[which(gen.vcf@strata$SPECIES==i)]
+assign(paste("gen.",i,sep=""), gen.vcf[set.ind, ])
+}
+```
+
+## Looking for fixed differences between Notropis amabilis and N megalops
+
+2. Find Homozygous
+## Finding how many tissues are homozygous at each allele
+```{r}
+amabilis.Ho.frq <- apply(gen.amabilis@tab, 2, function(x) length(which(x==2 | is.na(x))))
+megalops.Ho.frq <- apply(gen.megalops@tab, 2, function(x) length(which(x==2 | is.na(x))))
+```
+
+3. Find fixed loci
+## Getting loci that are fixed in all the tissues
+```{r}
+amabilis.fixed <- amabilis.Ho.frq[amabilis.Ho.frq==nrow(gen.amabilis@tab)]
+megalops.fixed <- megalops.Ho.frq[megalops.Ho.frq==nrow(gen.megalops@tab)]
+```
+
+4. Fixed SNPs at same allele
+## Getting fixed SNPs found at same allele
+```{r}
+same_allele <- names(megalops.fixed)[which(names(megalops.fixed) %in% names(amabilis.fixed))] #1934
+```
+
+5. SNPs unique to species
+## Getting SNPs set that is unique to the Fish
+```{r}
+amabilis.set <- amabilis.fixed[!(names(amabilis.fixed) %in% same_allele)]
+megalops.set <- megalops.fixed[!(names(megalops.fixed) %in% same_allele)]
+```
+
+6. Get loci names
+```{r}
+amabilis.names <- matrix(unlist(strsplit(names(amabilis.set),"[.]")),byrow=T, ncol=2)[,1]
+megalops.names <- matrix(unlist(strsplit(names(megalops.set),"[.]")),byrow=T, ncol=2)[,1]
+```
+
+7. Getting Common fixed loci
+```{r}
+same_loci <- megalops.names[which(megalops.names %in% amabilis.names)] #6223 
+```
+
+8. Find loci with mulitple SNPs
+## Looking for loci with multiple SNPs between the samples
+
+# Formatting data
+```{r}
+tmp <- matrix(unlist(strsplit(same_loci,"_")), byrow=T, ncol=4)
+dat_set <- data.frame(matrix(c(paste(tmp[,1], tmp[,2], tmp[,3], sep="_"), tmp[,4]), ncol=2))
+colnames(dat_set) <- c("CHROM","POS")
+contigs <- unique(dat_set$CHROM)
+window <- 600
+```
+
+# Preparing data object
+```{r}
+Groups <- matrix(ncol=4)
+colnames(Groups) <- c("Contig", "Start", "End", "SNPs")
+```
+
+```{r}
+#Looping over contigs to look for bases within 600bp of each other
+for(i in 1:length(contigs)){
+
+#Skipping Contigs with only 1 SNP site
+if(length(which(dat_set[,1]==contigs[i]))==1){next}
+
+#Making distance matrix
+dat_dis <- as.matrix(dist(dat_set[dat_set$CHROM==contigs[i],2]))
+rownames(dat_dis) <- colnames(dat_dis) <- dat_set[dat_set$CHROM==contigs[i],2]
+
+#Setting variables
+Clusters <- list()
+bin <- vector()
+
+#Looping over all the sites
+for(j in 1:nrow(dat_dis)){
+
+#skipping ones already done
+if(j %in% bin){next}
+
+#Establishing objects for next loop
+count <- length(Clusters)+1
+tmp <- as.numeric(colnames(dat_dis)[dat_dis[j,] <= window])
+
+#Writing out singles before looping
+if(length(tmp)==1){
+dat_out <- dat_set[which(dat_set$CHROM==contigs[i] & dat_set$POS==tmp),]
+Groups <- rbind(Groups, unlist(c(as.matrix(dat_out[,c(1,2,2)]),1)))
+bin <- sort(c(bin,j))
+next}
+
+#Establishing objects for next loop
+values <- which(dat_dis[j,] <= window)
+
+#Looking for sites within the window iteratively
+while(length(unlist(Clusters[count]))!=length(values)){
+Clusters[[count]] <- as.numeric(colnames(dat_dis)[values])
+
+for(k in values){
+tmp <- c(tmp,as.numeric(colnames(dat_dis)[dat_dis[k,] <= window]))
+}
+tmp <- unique(tmp)
+values <- c(values,which(colnames(dat_dis) %in% as.character(tmp)))
+values <- unique(values)
+}
+#Recording which locations have been used
+bin <- sort(c(bin,values))
+}
+
+#Creating the output table
+
+if(length(Clusters)==0){next}
+for(m in 1:length(Clusters)){
+Groups <- rbind(Groups, matrix(c(as.character(contigs[i]), min(Clusters[[m]]), max(Clusters[[m]]),length(Clusters[[m]])),ncol=4))
+}
+}
+```
+
+#Output table cleanup
+```{r}
+Groups <- data.frame(Groups[-1,])
+for(i in 2:4){Groups[,i] <- as.numeric(as.character(Groups[,i]))}
+```
+
+9. Final number loci & SNPs
+```{r}
+dim(Groups) 
+dim(dat_set) 
+```
+                         
+#Write out data
+```{r}
+write.table(dat_set, "/home/kdye/Nmegalops/diagnostic/amabilis_megalops_sites.txt", col.names=T, row.names=F, quote=F, sep="\t") 
+#bases where each species is fixed in an opposite direction
+write.table(Groups, "/home/kdye/Nmegalops/diagnostic/amabilis_megalops_multiloci.txt", col.names=T, row.names=F, quote=F, sep="\t")
+```
+
+#Filter vcf
+## Make vcf containing just shared loci in amabilis_megalops_sites.txt
+```{bash}
+vcftools --vcf notr_final.recode.vcf --out notr_diagSNPs --positions amabilis_megalops_sites.txt --recode --recode-INFO-all
+
+
+vcftools --vcf notr_diagSNPs.recode.vcf --out temp/diag --missing-site
+vcftools --vcf notr_diagSNPs.recode.vcf --out temp/diag --missing-indv
+
+lmiss <- read.table("/home/kdye/Nmegalops/diagnostic/temp/diag.lmiss", 
+                  stringsAsFactors = FALSE, header = TRUE)
+                  
+imiss <- read.table("/home/kdye/Nmegalops/diagnostic/temp/diag.imiss", 
+                  stringsAsFactors = FALSE, header = TRUE)
+```
+
+#FILTER DIAGNOSTIC SNPs
+## for potential future qPCR probe design or gt-seq panel
+
+```{r}
+snps <- read.table("/home/kdye/Nmegalops/diagnostic/amabilis_megalops_sites.txt", header = T) 
+
+loci <- read.table("/home/kdye/Nmegalops/diagnostic/amabilis_megalops_multiloci.txt", header = T) %>%
+  rename(CHROM = Contig) 
+```
+
+1.Filter loci with 1 or < SNPs
+#need to remove loci that do not contain multiple snps (more SNPs can increase probe specificity)
+```{r}
+loci <- loci %>%
+  filter("SNPs" > 1) #retained 1539
+```
+                         
+2. Filter SNPs < 30 bp of start of locus (room for primer binding)
+```{r}
+snps <- snps %>%
+  filter(POS > 30) #6007
+
+loci <- loci %>%
+  filter(CHROM %in% snps$CHROM) #1535
+```
+
+3. Filter SNPs > 20 bp apart 
+#need to retain snps that are within 20 bp of each other for a probe (Again, more SNPs can increase probe specificity)                        
+```{r}
+snps <- snps %>%
+  group_by(CHROM) %>%
+  filter(all(diff(POS) <= 20)) #1292 snps
+
+loci <- loci %>%
+  filter(CHROM %in% snps$CHROM) #254
+```
+
+4. Filter SNPs < 30 bp of end (Again, for primer binding)
+```{r}
+#Need to first determine where end of loci is
+
+#Run seq_length on reference.fasta
+seq_length.py reference.fasta > file.length
+
+length <- read.table("/home/kdye/Nmegalops/diagnostic/file.length", col.names = c("CHROM", "length")) %>%
+  filter (CHROM %in% snps$CHROM) 
+
+filter <- left_join(snps, length) 
+
+snps <- filter %>%
+  filter(abs(POS - length) > 30) 
+
+snps <- snps %>%
+  group_by(CHROM) %>%
+  filter(n() > 1) 
+
+loci <- loci %>%
+  filter(CHROM %in% snps$CHROM) 
+
+
+write.table(snps, "/home/kdye/Nmegalops/diagnostic/diagnostic_sites", col.names=T, row.names=F, quote=F, sep="\t") 
+write.table(loci, "/home/kdye/Nmegalops/diagnostic/diagnostic_loci", col.names=T, row.names=F, quote=F, sep="\t") 
+```
+                               
+#Filter vcf to retain diagnostic SNPs post filtering
+```{bash}
+vcftools --vcf notr_diagSNPs.recode.vcf --out notr_diagSNPfilt --positions diagnostic_sites --recode --recode-INFO-all
+```
+
+#DAPC
+
+```{r}
+vcf<-read.vcfR(file="/home/kdye/Nmegalops/diagnostic/notr_diagSNPfilt.recode.vcf")
+gen.vcf<-vcfR2genind(vcf)
+
+popdata <- read.csv(file = "/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE)
+strata(gen.vcf) <- popdata[match(indNames(gen.vcf),popdata[,1]),]
+head(gen.vcf@strata)
+
+#Assign strata
+setPop(gen.vcf) <- ~POP
+
+#Defining groups
+#Picking a specific K
+grp <- find.clusters(gen.vcf, max.n.clust=40, n.pca=400, n.clust =2, method="kmeans")
+
+#Comparing K groups to predefined groupings 
+setPop(gen.vcf)<- ~SPECIES
+table(pop(gen.vcf), grp$grp)
+
+#Centering genind object
+X <- scaleGen(gen.vcf, NA.method="mean", scale=F)
+
+#DAPC cross validation
+xval <- xvalDapc(X, grp$grp, n.pca.max = 300, training.set = 0.9, result = "groupMean", center = TRUE, scale = FALSE, n.pca = NULL, n.rep = 50, xval.plot = TRUE)
+
+#Outputting the cross-validation results
+xval[2:6]
+
+#Plotting DAPC results
+setPop(gen.vcf)<- ~SPECIES
+
+#Scatter plot
+scatter(xval$DAPC, scree.da=FALSE, cell=0, cex=3, bg="white",cstar=0)
+
+#Compoplot
+p.comp<-ggcompoplot(xval$DAPC, gen.vcf, cols=2, pal=map_colors) + theme(axis.text.x = element_blank()) + ggtitle("K-means 2 Groups (521 Diagnostic SNPs)")
+p.comp
+```
