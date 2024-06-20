@@ -26,7 +26,7 @@ write.table(cytb_inds, "/home/kdye/Nmegalops/hybrid/newhybrids/cytb/cytb_inds",
 col.names = FALSE, row.names = FALSE, quote = FALSE)
 ```
 
-# 1) vcf file
+#1) vcf file
   ## filter to keep only cytb individuals in vcf
 ```{bash}
 cp -s ../../../genpops/notr_final.recode.vcf .
