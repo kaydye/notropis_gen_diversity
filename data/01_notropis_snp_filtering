@@ -1,1 +1,1642 @@
+---
+title: "Notropis_SNP_filtering"
+author: "K. Dye"
+date: "2024-04-02"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
 
+#Load Libraries
+```{r load libraries, message=FALSE, warning=FALSE}
+source("/home/kdye/bin/libraries.R")
+source("/home/kdye/bin/ggplot.R")
+source("/home/kdye/bin/VCFfilterstats.R")
+source("/home/kdye/bin/HaplotypR.R")
+source("/home/kdye/bin/genind.R")
+source("/home/kdye/bin/PCA.R")
+
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(ggpubr)
+library(readr)
+library(plyr)
+library(scales)
+library(stringr)
+library(readr)
+library(zvau)
+library(base)
+library(vcfR)
+library(adegenet)
+```
+
+#SNP FILTERING------------    
+###Copy vcf into directory
+```{bash}
+cp -s ../TotalRawSNPs* .
+```
+
+###Charting the raw data
+```{bash}
+charts.sh TotalRawSNPs.vcf
+
+#297 individuals
+
+#DOC and GDL has individuals with high percent missing data. Fis is very high, centered around 0.6 with one individual (PR3_006) at -0.4. 
+```
+
+#1. Split Multiallelic Freebayes calls
+```{bash}
+vcfallelicprimitives -k -g TotalRawSNPs.vcf | sed 's:\.|\.:\.\/\.:g' > TRS.prim
+```
+
+#2. Remove indels
+```{bash}
+vcftools --vcf TRS.prim --recode-INFO-all --recode --out SNP.TRS --remove-indels
+```
+
+#3. Basic quality filters of data (Minimum of 2 alleles, Depth of at least 5, Minimum quality of at least 20)
+```{bash}
+vcftools --vcf SNP.TRS.recode.vcf --out SNP.TRS.QC --recode --recode-INFO-all --min-alleles 2 --minDP 5 --minQ 20 --min-meanDP 20
+```
+
+#4. Filters allelic balance, quality vs depth, strand representation and paired read representation
+```{bash}
+dDocent_filters SNP.TRS.QC.recode.vcf SNP.TRS.dDocent PE yes 10000
+
+charts.sh SNP.TRS.dDocent.FIL.recode.vcf 
+```
+
+#5a. Cytb Individuals
+Select the individuals included in cyt b dataset and then separate by putative identified species
+
+```{r}
+#cyt b inds
+cytb <- read.table("/home/kdye/Nmegalops/filtering/notropis/040224/cytb_inds", 
+                     col.names = c("INDV"), stringsAsFactors = FALSE)
+                     
+#Load popdata for species assignment
+popdata.filt <- read.csv(file = "/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE) %>%
+                     filter(INDV %in% cytb[,1])
+```
+
+###NOTROPIS MEGALOPS
+Create N.megalops dataset
+
+```{r}
+MegInds <- popdata.filt %>%
+  filter(SPECIES == "megalops") %>%
+  select(INDV)
+  
+#Make vector files
+MegInds <- MegInds$INDV
+
+write.table(MegInds, "/home/kdye/Nmegalops/filtering/notropis/040224/meg_inds",
+col.names = FALSE, row.names = FALSE, quote = FALSE)
+
+length(MegInds) #31 N.megalops individuals
+```
+
+```{bash}
+vcftools --vcf SNP.TRS.dDocent.FIL.recode.vcf --out SNP.TRS.MEGA --keep meg_inds --recode --recode-INFO-all
+
+charts.sh SNP.TRS.MEGA.recode.vcf
+```
+
+####Missing data >90% 
+90% missing data would indicate that it is a loci only present in the N.amabilis
+
+```{bash}
+#output missing data file by site 
+vcftools --vcf SNP.TRS.MEGA.recode.vcf --out temp/SNP.TRS.MEGA --missing-site
+```
+
+```{r}
+lmiss <- read.table("/home/kdye/Nmegalops/filtering/notropis/040224/temp/SNP.TRS.MEGA.lmiss", 
+                  stringsAsFactors = FALSE, header = TRUE)
+
+remove_snps_meg <- lmiss %>%
+  filter(F_MISS > 0.9) %>%
+  select(CHR, POS)
+
+#7952 SNPs
+```
+
+###NOTROPIS AMABILIS
+Create N.amabilis dataset
+
+```{bash}
+AmaInds <- popdata.filt %>%
+  filter(SPECIES == "amabilis") %>%
+  select(INDV)
+  
+#Make vector files
+AmaInds <- AmaInds$INDV
+
+write.table(AmaInds, "/home/kdye/Nmegalops/filtering/notropis/040224/ama_inds",
+col.names = FALSE, row.names = FALSE, quote = FALSE)
+
+length(AmaInds) #25 N.amabilis individuals to be removed
+
+vcftools --vcf SNP.TRS.dDocent.FIL.recode.vcf --out SNP.TRS.AMA --keep ama_inds --recode --recode-INFO-all
+
+#25 N.amabilis individuals
+
+charts.sh SNP.TRS.AMA.recode.vcf
+```
+
+####Missing data >90% 
+90% missing data would indicate that it is a loci only present in the N.megalops (i.e. 90-100% missing in N.amabilis)
+
+```{bash}
+#output missing data file by site 
+vcftools --vcf SNP.TRS.AMA.recode.vcf --out temp/SNP.TRS.AMA --missing-site
+```
+
+```{r}
+lmiss <- read.table("/home/kdye/Nmegalops/filtering/notropis/040224/temp/SNP.TRS.AMA.lmiss", 
+                  stringsAsFactors = FALSE, header = TRUE)
+
+remove_snps_ama <- lmiss %>%
+  filter(F_MISS > 0.9) %>%
+  select(CHR, POS)
+
+#19,111 SNPs
+```
+
+Combine two tables of SNP locations from each species into one file to be removed from the joint dataset
+
+```{r}
+remove_snps <- rbind(remove_snps_meg, remove_snps_ama)
+
+#27063 SNPs
+
+write.table(remove_snps, file = "/home/kdye/Nmegalops/filtering/notropis/040224/missdata_snps", 
+            col.names= FALSE, row.names = FALSE, quote = FALSE)
+```
+
+#5b. >90% missing from either species
+Remove all snps that are only found in either species (i.e. has >90% missing data in megalops means it's only found in amabilis and vice versa)
+```{bash}
+#Use the vcf file that was last created before splitting the dataset
+
+vcftools --vcf SNP.TRS.dDocent.FIL.recode.vcf --out SNP.TRS.BOTH --exclude-positions missdata_snps --recode --recode-INFO-all
+
+grep "dDocent" SNP.TRS.BOTH.recode.vcf | cut -f 1,2 | uniq | tail -n +2 > contigs.both
+```
+
+#6. Singleton and Doubleton
+Filtering singleton and doubleton loci for depth (Singletons >20 reads; Doubletons > 10 reads)
+```{bash}
+vcftools --vcf SNP.TRS.BOTH.recode.vcf --out out --singletons
+
+awk ' $3=="S" {print $1, $2}' out.singletons > sing.loci
+awk ' $3=="D" {print $1, $2}' out.singletons > doub.loci
+
+#create datasets without any singleton and doubleton snps
+vcftools --vcf SNP.TRS.BOTH.recode.vcf --out SNP.TRS.F01a --recode --recode-INFO-all --exclude-positions sing.loci
+vcftools --vcf SNP.TRS.F01a.recode.vcf --out SNP.TRS.F01b --recode --recode-INFO-all --exclude-positions doub.loci
+
+#filter for singletons that have minimum depth of 20
+vcftools --vcf SNP.TRS.BOTH.recode.vcf --out SNP.TRS.F01.sing --recode --recode-INFO-all --positions sing.loci
+vcftools --vcf SNP.TRS.F01.sing.recode.vcf --out SNP.TRS.F02.sing --recode --recode-INFO-all --minDP 20
+
+#filter for doubletons that have minimum depth of 10
+vcftools --vcf SNP.TRS.BOTH.recode.vcf --out SNP.TRS.F01.doub --recode --recode-INFO-all --positions doub.loci
+vcftools --vcf SNP.TRS.F01.doub.recode.vcf --out SNP.TRS.F02.doub --recode --recode-INFO-all --minDP 10
+
+#check for duplicate snps locations between vcfs
+
+sort contigs.txt | uniq -d > duplicate.snps
+
+#example of this SNP being a "S" in amabilis and "D" in megalops
+#dDocent_Contig_9936	36	S	A	GDL_004
+#dDocent_Contig_9936	36	D	T	PR3_006
+
+#These are all of the duplicated SNPs
+#2 dDocent_Contig_16690	151
+#2 dDocent_Contig_16708	38
+#2 dDocent_Contig_18437	69
+#2 dDocent_Contig_19448	257
+#2 dDocent_Contig_22921	8
+#2 dDocent_Contig_32593	217
+#2 dDocent_Contig_3311	214
+#2 dDocent_Contig_37626	180
+#2 dDocent_Contig_40293	208
+#2 dDocent_Contig_42869	247
+#2 dDocent_Contig_47218	240
+#2 dDocent_Contig_4747	183
+#2 dDocent_Contig_4793	68
+#2 dDocent_Contig_7313	99
+#2 dDocent_Contig_8421	121
+#2 dDocent_Contig_8438	177
+#2 dDocent_Contig_9936	36
+
+#going to remove the duplicate snps from the doubleton vcf
+
+vcftools --vcf SNP.TRS.F02.doub.recode.vcf --out SNP.TRS.F02a.doub --recode --recode-INFO-all --exclude-positions duplicate.snps
+
+#combine the vcfs of no singleton and doubletons with the vcfs that contain singletons with > 20 depth and doubletons with > 10 depth
+vcf-concat SNP.TRS.F01b.recode.vcf SNP.TRS.F02.sing.recode.vcf SNP.TRS.F02a.doub.recode.vcf > SNP.TRS.F02.vcf
+
+#double check SNP count
+grep "dDocent" SNP.TRS.F02.vcf | cut -f 1,2 | uniq | tail -n +2 | wc -l
+
+rm out.singletons
+```
+
+#7. Filter loci that have high variation in depth across a locus within an individual
+```{bash}
+vcftools --vcf SNP.TRS.F02.vcf --out out --geno-depth
+
+```
+
+```{R}
+R
+
+gdepth<-read.table(file="out.gdepth", head=T)
+gdepth[gdepth==-1]<-NA
+
+for (i in 3:dim(gdepth)[2]) {
+temp<-aggregate(gdepth[,i],by=list(gdepth[,1]), sd)
+if(i==3){indv.site.sd<-data.frame(temp,row.names=1)} else
+{indv.site.sd[,(i-2)]<-temp[,2]}
+}
+colnames(indv.site.sd)<-colnames(gdepth[3:dim(gdepth)[2]])
+tmp<-apply(indv.site.sd, 1, mean, na.rm=T)
+tmp2<-unique(c(names(which(tmp>25))))
+length(tmp)
+length(tmp2)
+write.table(tmp2,file="bad.loci.sd", quote=F, col.names=F, row.names=F)
+q("no")
+```
+
+```{bash}
+grep "dDocent" SNP.TRS.F02.vcf | cut -f 1,2 | uniq | tail -n +2 > contigs.txt
+grep -wf bad.loci.sd contigs.txt > bad.loci
+vcftools --vcf SNP.TRS.F02.vcf  --out SNP.TRS.F03 --exclude-positions bad.loci --recode-INFO-all --recode
+
+charts.sh SNP.TRS.F03.recode.vcf &
+```
+
+#8. Decision tree
+```{bash}
+cp SNP.TRS.F03.recode.vcf SOL/
+cd SOL
+SOL.filter1.no_mac.sh SNP.TRS.F03.recode.vcf
+
+#The Final_Filter.count in the SOL folder needs to be exported and evaluated to determine the best filtering path
+#Commonly B.1.3.3.2.3.2.1.2.SNP.finalb.1.recode.vcf has the best compromise keeping the most loci and the most individuals
+
+#A.1.1.1.2.2.3.1.2.SNP.finalb.1 retains the most SNPs, contigs, and individuals (28,723, 4,377, 295) 
+
+cp vcf/A.1.1.1.2.2.3.1.2.SNP.finalb.1.recode.vcf ../
+cd ..
+charts.sh A.1.1.1.2.2.3.1.2.SNP.finalb.1.recode.vcf
+
+#DOC_026 PR3_006
+
+```
+                  ***28,723 SNPs, 4,377 contigs, 295 individuals***
+
+#9. Removing loci with super high depth
+```{bash}
+dDocent_filters A.1.1.1.2.2.3.1.2.SNP.finalb.1.recode.vcf SNP.TRS.F04 PE no
+
+charts.sh SNP.TRS.F04.FIL.recode.vcf
+```
+
+#10. Filtering individuals with > 20% missing data
+```{bash}
+vcftools --vcf SNP.TRS.F04.FIL.recode.vcf --out SNP.TRS.F04.FIL --missing-indv
+mawk -v x=0.2 '$5 > x' SNP.TRS.F04.FIL.imiss | cut -f1 > lowDP.indv
+#DRP_017 and PR2_032
+vcftools --vcf SNP.TRS.F04.FIL.recode.vcf --out SNP.TRS.F05 --remove lowDP.indv --recode --recode-INFO-all
+charts.sh SNP.TRS.F05.recode.vcf
+
+charts is showing:
+# > 0.5 heterozygosity, need to check. If <5% of loci, going to remove
+# up to 30 SNPs/contig (this may be fixed post haplotyping)
+# high read depth per individual (apparently typical with our sequencing method)
+```
+
+####Stats
+```{bash}
+vcftools --vcf SNP.TRS.F05.recode.vcf --out temp/SNP.TRS.F05 --depth
+vcftools --vcf SNP.TRS.F05.recode.vcf --out temp/SNP.TRS.F05 --site-mean-depth
+vcftools --vcf SNP.TRS.F05.recode.vcf --out temp/SNP.TRS.F05 --missing-indv
+vcftools --vcf SNP.TRS.F05.recode.vcf --out temp/SNP.TRS.F05 --missing-site
+vcftools --vcf SNP.TRS.F05.recode.vcf --out temp/SNP.TRS.F05 --het
+```
+
+```{r}
+F5_Ind_Stats <- read.ind.stats(dir = "/home/kdye/Nmegalops/filtering/notropis/040224/temp", vcf = "SNP.TRS.F05")
+
+F5_Loci_Stats <- read.loc.stats(dir = "/home/kdye/Nmegalops/filtering/notropis/040224/temp", vcf = "SNP.TRS.F05")
+
+#Number loci
+
+loci <- as.data.frame(F5_Loci_Stats$CHR) %>%
+  distinct() %>%
+  dplyr::rename(LOCUS = `F5_Loci_Stats$CHR`)
+
+#Number SNPs
+
+SNPs <- as.data.frame(F5_Loci_Stats$CHR) %>%
+  dplyr::rename(SNPs = `F5_Loci_Stats$CHR`)
+
+dplyr::count(loci) #4318
+dplyr::count(SNPs) #26,537
+```
+
+#11. Removing Excess Heterozysity (if <5% of loci > 0.05 heterozygosity)
+```{r}
+#Need to check how many loci > 0.5 heterozygosity
+
+loci_stats <- read_csv("/home/kdye/Nmegalops/filtering/notropis/040224/SNP.TRS.F05.2024-04-03/loci.csv", col_names = TRUE)
+
+rm_loci <- loci_stats %>%
+  filter(PER_HET >= 0.55) %>%
+  select(CHROM, POS)
+#398 SNPs, less than 1% so removing
+
+write.table(rm_loci, "/home/kdye/Nmegalops/filtering/notropis/040224/hetexcessloci",
+col.names = FALSE, row.names = FALSE, quote = FALSE)
+```
+
+```{bash}
+vcftools --vcf SNP.TRS.F05.recode.vcf --out SNP.TRS.F06 --exclude-positions hetexcessloci --recode --recode-INFO-all
+charts.sh SNP.TRS.F06.recode.vcf
+```
+
+###Pre-haplotyping stats
+```{bash}
+vcftools --vcf SNP.TRS.F06.recode.vcf --out temp/SNP.TRS.F06 --depth
+vcftools --vcf SNP.TRS.F06.recode.vcf --out temp/SNP.TRS.F06 --site-mean-depth
+vcftools --vcf SNP.TRS.F06.recode.vcf --out temp/SNP.TRS.F06 --missing-indv
+vcftools --vcf SNP.TRS.F06.recode.vcf --out temp/SNP.TRS.F06 --missing-site
+vcftools --vcf SNP.TRS.F06.recode.vcf --out temp/SNP.TRS.F06 --het
+```
+
+```{r}
+F6_Ind_Stats <- read.ind.stats(dir = "/home/kdye/Nmegalops/filtering/notropis/040224/temp", vcf = "SNP.TRS.F06")
+
+F6_Loci_Stats <- read.loc.stats(dir = "/home/kdye/Nmegalops/filtering/notropis/040224/temp", vcf = "SNP.TRS.F06")
+
+#Number loci
+
+loci <- as.data.frame(F6_Loci_Stats$CHR) %>%
+  distinct() %>%
+  dplyr::rename(LOCUS = `F6_Loci_Stats$CHR`)
+
+#Number SNPs
+
+SNPs <- as.data.frame(F6_Loci_Stats$CHR) %>%
+  dplyr::rename(SNPs = `F6_Loci_Stats$CHR`)
+
+dplyr::count(loci) #4,310
+dplyr::count(SNPs) #26,139
+```
+            ***26,139 SNPs, 4,310 contigs, 293 individuals***
+
+#HAPLOTYPING
+```{bash}
+vcfsamplenames SNP.TRS.F06.recode.vcf > notr_haplo_inds
+
+cd haplotyping/notropis/040224
+
+#copy files needed to run rad haplotyper
+#popmap
+cp ../../../filtering/notropis/040224/Notr_Haplo_Inds .
+cut -f1 -d "_" Notr_Haplo_Inds > p; paste Notr_Haplo_Inds p > popmap; rm p
+
+#vcf
+cp ../../../filtering/notropis/040224/SNP.TRS.F06.recode.vcf .
+
+#copy reference and bam files from HPC
+scp reference.fasta* kdye@deepthought.ad.tamucc.edu:/home/kdye/Nmegalops/haplotyping/notropis/040224
+scp Lib*/Idx*/*.bam kdye@deepthought.ad.tamucc.edu:/home/kdye/Nmegalops/haplotyping/notropis/040224
+
+#Remove .bam files for individuals lost in SNP filtering process
+rm DOC_026* PR3_006* DRP_017* PR2_032*
+
+rm cat*
+
+#Remove -RG from .bam files
+for file in *-RG.bam; do mv -i "${file}" "${file/-RG.bam/.bam}"; done
+
+#reindex bam files after moving from HPC to DeepThought
+ls *bam | while read i; do echo "indexing $i"; samtools index $i; done
+```
+
+##Run RadHaplotyper
+```{bash}
+#can change ix threads based on availability on server
+rad_haplotyper.pl -v SNP.TRS.F06.recode.vcf -r reference.fasta -p popmap -x 20 -m 0.8 -o SNP.TRS.F07.vcf -g SNP.TRS.F07.gen
+
+#139 loci flagged
+
+charts_plus_dup.sh SNP.TRS.F07.vcf
+```
+
+##Post-Haplotyping Filter 
+
+###SNPs per locus
+```{r}
+Hap_Stats <- read.hap.stats("/home/kdye/Nmegalops/haplotyping/notropis/040224/stats.out")
+
+Ind_Hap_Stats <- read.delim("/home/kdye/Nmegalops/haplotyping/notropis/040224/ind_stats.out", stringsAsFactors = FALSE)
+
+#Determine cutoff using boxplot
+Hap_Stats %>%
+  ggplot() +
+  geom_boxplot(aes(y = Sites)) +
+  labs(y = "Number of SNPs per contig") +
+  theme_standard
+
+cutoff <- quantile(Hap_Stats$Sites, .75, na.rm = TRUE) + 1.5*IQR(Hap_Stats$Sites, na.rm = TRUE) #12
+
+rmsnps <- filter(Hap_Stats, Sites > 12)%>%
+  select(Locus)
+#180 loci
+
+write_delim(rmsnps, file = "/home/kdye/Nmegalops/haplotyping/notropis/040224/exsnps_remove.loci", delim = "\t")
+```
+
+####Remove loci from vcf
+```{bash}
+#remove loci
+dos2unix /home/kdye/bin/remove_loci_vcf.sh
+
+bash /home/kdye/bin/remove_loci_vcf.sh exsnps_remove.loci SNP.TRS.F07.vcf
+
+# kept 20883 out of a possible 23309 Sites
+
+vcftools --vcf vcf-minus-contigs.recode.vcf --out SNP.TRS.F08 --recode --recode-INFO-all
+```
+
+### > 90% Missing data
+Select the individuals included in cyt b dataset and then separate by putative identified species
+
+```{r}
+#cyt b inds
+cytb <- read.table("/home/kdye/Nmegalops/filtering/notropis/040224/cytb_inds", 
+                     col.names = c("INDV"), stringsAsFactors = FALSE)
+                     
+#Load popdata for species assignment
+popdata.filt <- read.csv(file = "/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE) %>%
+                     filter(INDV %in% cytb[,1])
+```
+
+####NOTROPIS MEGALOPS
+Create N.megalops dataset
+
+```{r}
+MegInds <- popdata.filt %>%
+  filter(SPECIES == "megalops") %>%
+  select(INDV)
+  
+#Make vector files
+MegInds <- MegInds$INDV
+
+write.table(MegInds, "/home/kdye/Nmegalops/haplotyping/notropis/040224/meg_inds",
+col.names = FALSE, row.names = FALSE, quote = FALSE)
+
+length(MegInds) #31 N.megalops individuals
+```
+
+```{bash}
+vcftools --vcf SNP.TRS.F08.recode.vcf --out SNP.MEGA --keep meg_inds --recode --recode-INFO-all
+
+charts.sh SNP.MEGA.recode.vcf
+```
+
+90% missing data would indicate that it is a loci only present in the N.amabilis
+
+```{bash}
+#output missing data file by site 
+vcftools --vcf SNP.MEGA.recode.vcf --out temp/SNP.MEGA --missing-site
+```
+
+```{r}
+lmiss <- read.table("/home/kdye/Nmegalops/haplotyping/notropis/040224/temp/SNP.MEGA.lmiss", 
+                  stringsAsFactors = FALSE, header = TRUE)
+
+remove_snps_meg <- lmiss %>%
+  filter(F_MISS > 0.9) %>%
+  select(CHR, POS)
+
+#0 SNPs
+```
+
+####NOTROPIS AMABILIS
+Create N.amabilis dataset
+
+```{bash}
+AmaInds <- popdata.filt %>%
+  filter(SPECIES == "amabilis") %>%
+  select(INDV)
+  
+#Make vector files
+AmaInds <- AmaInds$INDV
+
+write.table(AmaInds, "/home/kdye/Nmegalops/haplotyping/notropis/040224/ama_inds",
+col.names = FALSE, row.names = FALSE, quote = FALSE)
+
+length(AmaInds) #25 N.amabilis individuals to be removed
+
+vcftools --vcf SNP.TRS.F08.recode.vcf --out SNP.AMA --keep ama_inds --recode --recode-INFO-all
+
+#25 N.amabilis individuals
+
+charts.sh SNP.AMA.recode.vcf
+```
+
+90% missing data would indicate that it is a loci only present in the N.megalops (i.e. 90-100% missing in N.amabilis)
+
+```{bash}
+#output missing data file by site 
+vcftools --vcf SNP.AMA.recode.vcf --out temp/SNP.AMA --missing-site
+```
+
+```{r}
+lmiss <- read.table("/home/kdye/Nmegalops/haplotyping/notropis/040224/temp/SNP.AMA.lmiss", 
+                  stringsAsFactors = FALSE, header = TRUE)
+
+remove_snps_ama <- lmiss %>%
+  filter(F_MISS > 0.9) %>%
+  select(CHR, POS)
+
+#73 SNPs
+```
+
+Combine two tables of SNP locations from each species into one file to be removed from the joint dataset
+
+```{r}
+remove_snps <- rbind(remove_snps_meg, remove_snps_ama)
+#73 SNPs
+
+remove_loci <- remove_snps %>%
+  select(CHR) %>%
+  unique()
+#10
+
+write.table(remove_snps, file = "/home/kdye/Nmegalops/haplotyping/notropis/040224/missdata_snps", 
+            col.names= FALSE, row.names = FALSE, quote = FALSE)
+```
+
+Remove all snps that are only found in either species (i.e. has >90% missing data in megalops means it's only found in amabilis and vice versa)
+```{bash}
+#Use the vcf file that was last created before splitting the dataset
+
+vcftools --vcf SNP.TRS.F08.recode.vcf --out SNP.TRS.FILT --exclude-positions missdata_snps --recode --recode-INFO-all
+
+grep "dDocent" SNP.TRS.FILT.recode.vcf | cut -f 1,2 | uniq | tail -n +2 > contigs.final
+```
+
+##Remove loci from genind
+genind output by rad haplotyper
+```{r}
+#Import genepop file
+SNP.TRS.F07.gen <- read.genepop(file = "/home/kdye/Nmegalops/haplotyping/notropis/040224/SNP.TRS.F07.gen", ncode = 3L, quiet = FALSE)
+
+#excess hetero loci
+remove_snps <- rmsnps %>%
+  dplyr::rename(CHR = `Locus`) #180
+remove_loci #10
+
+post_haplo_filt <- rbind(remove_loci, remove_snps) %>%
+  unique() #190
+
+post_haplo_filt <- post_haplo_filt$CHR
+notr_filt.gen <- genind.rem.loci(SNP.TRS.F07.gen, post_haplo_filt)
+#3,752 loci
+```
+
+Write Genind Post-Filtering
+```{r}
+library(zvau)
+
+writeGenPop(notr_filt.gen, file.name = "/home/kdye/Nmegalops/genpops/notr_filt.gen", comment="notr_snpfilt.gen")
+```
+
+##Final stats
+```{bash}
+vcftools --vcf SNP.TRS.FILT.recode.vcf --out temp/notr_filt --depth
+vcftools --vcf SNP.TRS.FILT.recode.vcf --out temp/notr_filt --site-mean-depth
+vcftools --vcf SNP.TRS.FILT.recode.vcf --out temp/notr_filt --missing-indv
+vcftools --vcf SNP.TRS.FILT.recode.vcf --out temp/notr_filt --missing-site
+vcftools --vcf SNP.TRS.FILT.recode.vcf --out temp/notr_filt --het
+```
+
+```{r}
+Final_Ind_Stats <- read.ind.stats(dir = "/home/kdye/Nmegalops/haplotyping/notropis/040224/temp", vcf = "notr_filt")
+
+Final_Loci_Stats <- read.loc.stats(dir = "/home/kdye/Nmegalops/haplotyping/notropis/040224/temp", vcf = "notr_filt")
+
+#Number loci
+loci <- as.data.frame(Final_Loci_Stats$CHR) %>%
+  distinct() %>%
+  dplyr::rename(LOCUS = `Final_Loci_Stats$CHR`)
+
+#Number SNPs
+SNPs <- as.data.frame(Final_Loci_Stats$CHR) %>%
+  dplyr::rename(SNPs = `Final_Loci_Stats$CHR`)
+
+#Number individuals
+inds <- as.data.frame(Final_Ind_Stats$INDV) %>%
+  dplyr::rename(IND = `Final_Ind_Stats$INDV`)
+
+#Final stats
+dplyr::count(inds) #293
+dplyr::count(SNPs) #20810
+dplyr::count(loci) #3,752
+
+dplyr::count(SNPs)/dplyr::count(loci)
+```
+
+  ***20,810 SNPs, 3,752 contigs, 293 individuals, ~5.5 SNPs/contig***
+
+#REMOVE DUPLICATES
+
+#RELATEDNESS  
+
+Read in filtered Genepop file
+
+```{r message=FALSE, warning=FALSE}
+#Import genepop file
+
+notr_filt.gen <- read.genepop(file = "/home/kdye/Nmegalops/genpops/notr_filt.gen", ncode = 3L, quiet = FALSE)
+```
+
+```{r}
+#Assign strata
+
+#Read in popmap
+popmap <- read.table("/home/kdye/Nmegalops/haplotyping/notropis/040224/popmap", col.names = c("INDV", "POP"), stringsAsFactors = FALSE)
+#strata
+strata(notr_filt.gen) <- popmap[match(indNames(notr_filt.gen),popmap[,1]),]
+
+setPop(notr_filt.gen) <- ~POP
+
+popNames(notr_filt.gen)
+#"DOC"  "DRB" "DRP"   "GDL" "IDC" "PNT" "PR1" "PR2"   "PR3"   "PR4"   "PR5"   "SFC" 
+```
+
+##Identify duplicates
+```{r}
+Notr_df <- genind2df(notr_filt.gen, usepop = FALSE, oneColPerAll = TRUE) %>%
+  rownames_to_column("INDV")
+
+write.table(Notr_df, "/home/kdye/Nmegalops/relatedness/dupe_related.input", row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
+
+#Import input file as list gdata, nloci, nalleles, ninds, freqs
+library(related)
+
+genotypedata <- readgenotypedata("/home/kdye/Nmegalops/relatedness/dupe_related.input")
+
+dupe_related <- coancestry(genotypedata$gdata, wang = 1)
+
+dupe_related_results <- dupe_related$relatedness
+
+dupe_related_results <- dupe_related_results %>%
+  dplyr::select(pair.no, ind1.id, ind2.id, wang)
+
+write_csv(dupe_related_results, "/home/kdye/Nmegalops/relatedness/dupe_related_results.csv")
+
+rm(dupe_related)
+rm(dupe_related_results)
+rm(genotypedata)
+
+dupe_related_results <- read_csv("/home/kdye/Nmegalops/relatedness/dupe_related_results.csv")
+
+#Find duplicate individuals
+duplicate_inds <- dupe_related_results %>%
+  dplyr::rename(Relatedness=wang) %>%
+  dplyr::rename(Ind_1=ind1.id) %>%
+  dplyr::rename(Ind_2=ind2.id) %>%
+  dplyr::filter(Relatedness>0.8) %>%
+  select(c(-pair.no))
+
+#IDC_003 & IDC_009 lib 1 dupe
+#SFC_016 & SFC_026 lib 1 dupe
+#DRP_025 & DRP_038 lib 2 dupe
+#PR5_009 & PR5_025 lib 2 dupe
+#PR2_008 & PR2_033 bw lib dupe
+#SFC_004 & SFC_030 bw lib dupe
+#DOC_008 & DOC_017 bw lib dupe
+
+#IDC_003, PR2_008, SFC_004, DOC_008 all cytb individuals as well
+
+write_csv(duplicate_inds, "/home/kdye/Nmegalops/relatedness/duplicate_inds.csv")
+```
+
+Compare genotypes between duplicates.
+
+```{r}
+Notr_df <- genind2df(notr_filt.gen,
+                   usepop = TRUE,
+                   sep = ":", oneColPerAll = FALSE) %>%
+  dplyr::select(-pop) %>%
+  rownames_to_column()
+
+#Compare genotypes of duplicate individuals
+
+dup1 <- Notr_df %>%
+  dplyr::filter(rowname %in% duplicate_inds[1,]) %>%
+  dplyr::select(-rowname) %>%
+  rownames_to_column %>% 
+  gather(LOCUS, value, -rowname) %>% 
+  spread(rowname, value) %>%
+  dplyr::rename(Ind1 = "1", Ind2 = "2")
+
+genoerror <- dplyr::filter(dup1, Ind1 != Ind2)
+
+# Compare loci affected by genotyping error
+
+Geno_Error <- dplyr::count(genoerror, LOCUS)
+
+ggplot(Geno_Error, aes(x = n)) +
+  geom_histogram(binwidth = 1, color = "black", fill = "grey") +
+  geom_vline(aes(xintercept = base::mean(n, na.rm = TRUE)),
+             color = "red", linetype = "dashed", size = 1) +
+  geom_vline(aes(xintercept = quantile(n, 0.95)),
+             color = "red", linetype = "dashed", size = 1) +
+  labs(x = "Number of Genotyping Errors Per Locus") +
+  theme_standard
+```
+
+Remove loci with high genotyping error.
+```{r}
+temp <- dplyr::count(genoerror, LOCUS) %>%
+  dplyr::filter(n > 3)
+
+# Remove flagged loci 0
+
+# remove_loci_dup <- temp$LOCUS
+# Notr_filt.gen <- genind.rem.loci(Notr_filt.gen, remove_loci_dup)
+# 
+# remove_loci <- as.data.frame(remove_loci_dup)
+# 
+# write.table(Remove_Loci_Dup, file = "/home/kdye/Nmegalops/relatedness/remove_loci", 
+# col.names= FALSE, row.names = FALSE, quote = FALSE)
+```
+
+##Remove duplicates
+```{r}
+#Remove one from each pair of duplicates
+
+#From genind
+remove_dupes <- duplicate_inds$Ind_1
+
+write.table(remove_dupes, file = "/home/kdye/Nmegalops/relatedness/notropis/remove_dupes", 
+col.names= FALSE, row.names = FALSE, quote = FALSE)
+
+notr_filt.gen <- gen.ind.rem.Ind(notr_filt.gen, remove_dupes)
+
+#From vcf
+
+finalinds <- indNames(notr_filt.gen)
+
+write.table(finalinds, file = "/home/kdye/Nmegalops/relatedness/notropis/finalinds", col.names= FALSE, row.names = FALSE, quote = FALSE)
+```
+
+```{bash}
+cp -s ../../haplotyping/notropis/040224/SNP.TRS.FILT.recode.vcf . 
+
+vcftools --vcf SNP.TRS.FILT.recode.vcf --out SNP.FINAL.recode.vcf --keep finalinds --recode --recode-INFO-all
+```
+
+#Rewrite genpop
+```{r}
+#overwriting previous genpop to exclude the duplicate individuals
+writeGenPop(notr_filt.gen, file.name = "/home/kdye/Nmegalops/genpops/notr_filt.gen", comment="notr_filt.gen")
+```
+**Final Filtered Dataset - 286 individuals and 3,752 loci**
+
+#STRATA
+```{r}
+popdata <- read.csv(file="/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE)
+
+filt_popdata <- popdata[match(indNames(notr_filt.gen),popdata[,1]),]
+```
+
+#LIBRARY EFFECTS ------------------------
+
+#OutFlank
+
+###Create 012 file
+```{bash}
+mkdir libeffects
+cd libeffects
+cp -s ../../relatedness/notropis/SNP.FINAL.recode.vcf .
+
+vcftools --vcf SNP.FINAL.recode.vcf --out notr_outflank --012
+```
+
+##Create snp_mat
+```{r}
+# Read 012 format data and eliminate first column
+snp_mat <- read.table(file = "/home/kdye/Nmegalops/libeffects/notropis/notr_outflank.012") 
+snp_mat <- snp_mat[,-1]
+
+# Replace -1 with 9 (for missing data)
+
+snp_mat[snp_mat == -1] <- 9
+
+# Convert to an array
+
+snp_mat <- as.matrix(snp_mat)
+
+# Create a vector listing locus names
+
+loc_names <- read.table("/home/kdye/Nmegalops/libeffects/notropis/notr_outflank.012.pos", col.names = c("CHROM", "POS")) %>%
+  unite(col = "LOCUS", 1:2, sep = "_", remove = FALSE)
+
+loc_names <- loc_names$LOCUS
+
+# Create a vector with library and index (populations) designations for each individual
+
+inds <- read.table("/home/kdye/Nmegalops/libeffects/notropis/notr_outflank.012.indv", col.names = "INDV")
+
+lib <- filt_popdata %>%
+      filter(INDV %in% inds$INDV) %>%
+  dplyr::select(LIB, INDEX)
+
+pop_names <- paste0(lib$LIB,"-", lib$INDEX)
+
+```
+
+##Heterozygosity Vs Fst
+
+Estimate heterozygosity per locus and calculate F<sub>ST</sub>. 
+
+```{r , message=FALSE, warning=FALSE, output=FALSE}
+library(OutFLANK)
+
+fst_mat <- OutFLANK::MakeDiploidFSTMat(snp_mat, loc_names, pop_names) %>%
+  drop_na(He)
+
+head(fst_mat)
+
+```
+
+Check for loci with low sample sizes or unusual values of uncorrected F<sub>ST</sub>. Look for loci that deviate from the linear relationship in the plots below and remove those loci.
+
+To fit the FST distribution to chi-square, OutFLANK requires the FST uncorrected for sample size (FSTNoCorr). This is a valid approach as long as all loci have equal sample sizes within populations. The effect of correcting for sample size will make the corrected FST estimate (FST) lower than the uncorrected FST estimate (FSTNoCorr). Note that all loci deviate between FST and FSTNoCorr, but OutFLANK assumes that these deviations are the same for each locus. If a locus has a much lower sample size compared to the rest, it could have a broader error distribution (and therefore incorrectly inferred as an outlier).
+
+```{r fig.height=5, fig.width=5}
+
+ggplot(fst_mat, aes(x = FST, y = FSTNoCorr)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, size = 1, color = "red", linetype = "dashed") +
+  labs(x = "FST", y = "Corrected FST")+
+  theme_standard
+
+```
+
+No loci deviate from the linear relationship in the above plots because they were all genotyped in the same number of individuals, thus all loci are retained.
+
+Plot heterozygosity vs. uncorrected FST and histogram of uncorrected FST. 
+
+```{r fig.height=5, fig.width=5}
+
+ggplot(fst_mat, aes(x = He, y = FSTNoCorr)) +
+  geom_point(shape = 1, size = 2) +
+ # scale_y_continuous(limits = c(0, 0.25)) +
+  labs(x = "Heterozygosity", y = "Uncorrected FST per Locus") +
+  theme_standard
+
+ggplot(fst_mat, aes(x = FSTNoCorr)) +
+  geom_histogram(binwidth = 0.01, color = "black", fill = "grey") +
+  #scale_x_continuous(limits = c(0, 0.25)) +
+  labs(x = "Uncorrected FST per Locus, All Loci") +
+  theme_standard
+
+```
+
+#### Determine Trimmed Distribution of Fst**
+
+Run the `OutFLANK()` function to estimate the parameters on the neutral FST distribution.
+
+```{r message=FALSE, warning=FALSE}
+
+# Number of spatial locations included in the dataset
+
+n <- length(unique(pop_names)) #8 (4 indices and 2 libraries)
+
+# Estimate distribution for Sites
+
+outflank <- OutFLANK(fst_mat, n, LeftTrimFraction = 0.05, RightTrimFraction = 0.05,
+                       Hmin = 0.1, qthreshold = 0.05)
+
+```
+
+Check fit by looking at plot, particularly in the right tail.
+
+Also look at p-value histogram. This plots the "right-tailed" p-values, meaning the outliers in the right tail of the FST distribution will have a p-value near zero. We expect the histogram to be flat and maybe have a bump near zero.
+
+```{r fig.height=5, fig.width=5}
+
+OutFLANKResultsPlotter(outflank, withOutliers = TRUE, NoCorr = TRUE, Hmin = 0.1, binwidth = 0.001, Zoom = FALSE, RightZoomFraction = 0.05, titletext = NULL)
+
+hist(outflank$results$pvaluesRightTail)
+
+OutFLANKResultsPlotter(outflank, withOutliers = TRUE, NoCorr = TRUE, Hmin = 0.1, binwidth = 0.001, Zoom = TRUE, RightZoomFraction = 0.1, titletext = NULL)
+
+```
+
+Important values returned by OutFLANK.
+
+```{r}
+# Mean FST of loci not flagged as outliers
+outflank$FSTbar
+#0.03688548
+
+# Mean FST of loci not flagged as outliers without sample-size correction
+outflank$FSTNoCorrbar
+#0.06059026
+
+# Inferred df for the chi-square distribution
+outflank$dfInferred
+#8.578624
+
+# Number of loci flagged as having significantly low FST
+outflank$numberLowFstOutliers
+#0
+
+# Number of loci flagged as having significantly high FST
+outflank$numberHighFstOutliers
+#6
+
+# Dataframe of results
+temp <- outflank$results
+
+# Check that the number of loci in the input file is the same as the number of loci in the output file
+nrow(fst_mat) - nrow(outflank$results)
+
+```
+
+#### Identify Outliers
+
+Dataset contains SNPs on the same contig. Group SNP sites by contig to determine the proportion of SNPs on the same contig that are flagged as Fst outliers.
+
+```{r fig.height=5, fig.width=5}
+
+results <- outflank$results %>%
+  drop_na() %>%
+  separate(LocusName, into = c("dD", "Cont", "No", "Pos"), remove = FALSE) %>%
+  unite(contig, 2:4, sep = "_") %>%
+  mutate(freq = (1 - meanAlleleFreq)) %>%
+  mutate(MAF = ifelse(meanAlleleFreq > freq, freq, meanAlleleFreq)) %>%
+  dplyr::select(-LocusName)
+results
+
+write_csv(results, "/home/kdye/Nmegalops/libeffects/notropis/outflank_output.csv")
+
+```
+
+Plot outliers, if present.
+
+6 outliers
+```{r fig.height=5, fig.width=5, eval = F}
+
+contig <- results %>%
+  group_by(contig) %>%
+  dplyr::count(OutlierFlag) %>%
+  spread(key = OutlierFlag, value = n) %>%
+  dplyr::rename(OUT = `TRUE`) %>%
+  dplyr::rename(IN = `FALSE`) %>%
+  replace_na(list(IN = 0, OUT = 0)) %>%
+  mutate(SNPs = IN + OUT, prop_IN = IN/SNPs, prop_OUT = OUT/SNPs)
+
+ggplot(contig, aes(x = prop_IN)) +
+  geom_histogram(binwidth = 0.05, color = "black", fill = "darkgrey") + 
+  labs(x = "% SNPs Per Contig, Neutral") +
+  theme_standard
+
+ggplot(contig, aes(x = prop_OUT)) +
+  geom_histogram(binwidth = .05, color = "black", fill = "darkgrey") + 
+  labs(x = "% SNPs Per Contig, Outlier") +
+  theme_standard
+
+# Outflank plot
+
+plot(outflank$results$He, outflank$results$FST, pch=20, col="grey")
+    points(outflank$results$He[outflank$results$qvalues<0.01], outflank$results$FST[outflank$results$qvalues<0.01], pch=21, col="blue")
+    
+```
+
+**Identify Outlier(s)**
+
+```{r, warning=FALSE, message=FALSE, output=FALSE}
+
+outliers <- results %>%
+ filter(qvalues < 0.05)
+
+outflank_outliers <- distinct(outliers, contig) %>%
+  dplyr::rename(LOCUS = contig) %>%
+  distinct()
+
+dplyr::count(outflank_outliers)
+#6
+
+write.table(outflank_outliers, "/home/kdye/Nmegalops/libeffects/notropis/outflank_outliers",
+            col.names = FALSE, row.names = FALSE, quote = FALSE)
+```
+
+#Bayescan
+
+Outlier loci by Library and Index
+
+##Export genepop file
+
+```{r}
+#Must include library and index because bayescan needs at least 3 groups and I have only 2 libraries, so I will break it up by library and index to have a total 6 gorups
+
+popdata <- read.csv(file="/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE)
+
+filt_popdata <- popdata[match(indNames(notr_filt.gen),popdata[,1]),]
+filt_inds <- filt_popdata$INDV
+
+#Assign strata
+strata(notr_filt.gen) <- filt_popdata[match(indNames(notr_filt.gen),filt_popdata$INDV),]
+setPop(notr_filt.gen) <- ~LIB/INDEX
+
+#Writing the Genepop to libeffects folder
+
+writeGenPop(notr_filt.gen, file.name = "/home/kdye/Nmegalops/libeffects/notropis/notr_filt.gen", comment = "notr_filt.gen")
+
+```
+
+##Create Bayescan file
+
+```{bash}
+cd /home/kdye/Nmegalops/libeffects/notropis
+
+#Make sure you have input file and genepop_bayescan.spid in directory
+#Will have to change path to PGDSpider depending on which workstation you are on
+
+java8 -jar /usr/local/bin/PGDSpider2-cli.jar -inputfile notr_filt.gen -inputformat GENEPOP -outputfile notr_BS.txt -outputformat BAYE_SCAN -spid genepop_bayescan.spid
+```
+
+#Run Bayescan
+```{bash}
+#Consider changing the 'pr_odds' from 10,000 to 1,000 here (depending on number of loci), making false positives more likely.
+
+#Will have to change bayescan command depending on which workstation you are on
+bayescan notr_BS.txt -od . -o pr1k_burn200k_n30k_thin50 -all_trace -threads 20 -n 30000 -thin 50 -nbp 20 -pilot 5000 -burn 200000 -pr_odds 1000 -out_pilot -out_freq
+```
+
+List of loci in dataset.
+
+```{r}
+#Read in genepop
+notr_filt.gen <- read.genepop(file = "/home/kdye/Nmegalops/libeffects/notropis/notr_filt.gen", ncode = 3L, quiet = FALSE)
+
+#Loci_Lib <- as.data.frame(t(read_delim("/home/kdye/Cproserpina/bayescan/Lib1And2/DOM_060823/cpro3.gen", delim=",", col_names=FALSE, skip=1, n_max=1)))
+
+Loci_Lib <- as.data.frame(locNames(notr_filt.gen))
+
+colnames(Loci_Lib) <- "LOCUS"
+
+nrow(Loci_Lib) #3,752 loci
+```
+
+##Check parameters and evaluate convergence of the run.
+
+```{r}
+read_lines("/home/kdye/Nmegalops/libeffects/notropis/pr1k_burn200k_n30k_thin50_Verif.txt", skip=3, n_max=11)
+```
+
+Plot posterior distributions. The full output of the MCMC algorithm is in `*.sel`. Each line corresponds to an iteration of the MCMC algorithm where columns contain an iteration index, log-likelihood, F<sub>ST</sub> coefficient for every population, and alpha coefficients for every locus.
+
+Counting the null values of alpha gives the posterior probability for the neutral model; this is only written out if the `-all_trace` flag is enabled).
+
+```{r}
+#Read in popdata
+popdata <- read.csv(file="/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE)
+
+#Assign strata and find levels of LIB/INDEX
+strata(notr_filt.gen) <- popdata[match(indNames(notr_filt.gen),popdata$INDV),]
+setPop(notr_filt.gen) <- ~LIB/INDEX
+levels(notr_filt.gen@pop)
+idx_order <- c("1_2","1_4","1_7","1_10","2_2","2_4","2_7","2_10")
+
+# Number of groups
+
+p <- 8
+
+# Vector of Fst values calc
+
+p <- c(1:p)
+p <- paste("fst", p, sep = "")
+
+# Number of loci
+
+l <- 3752
+
+# Vector of Fst values calc
+
+l <- c(1:l)
+l <- paste("alpha", l, sep = "")
+
+# Column names
+
+c <- c("iteration", "logL", p, l)
+
+# Read chain data
+
+sel <- read_table2("/home/kdye/Nmegalops/libeffects/notropis/pr1k_burn200k_n30k_thin50.sel", skip = 1, col_names = c, col_types = cols(.default = "n"))%>%
+  dplyr::rename("1_2" = fst1) %>%
+  dplyr::rename("1_4" = fst2) %>%
+  dplyr::rename("1_7" = fst3) %>%
+  dplyr::rename("1_10" = fst4) %>%
+  dplyr::rename("2_2" = fst5) %>%  
+  dplyr::rename("2_4" = fst6) %>%
+  dplyr::rename("2_7" = fst7) %>%
+  dplyr::rename("2_10" = fst8)
+
+head(sel)
+```
+
+Trace likelihoods over iterations
+
+```{r fig.height=4, fig.width=12}
+
+mean <- mean(sel$logL)
+std <- sd(sel$logL)
+
+#Plot likelihood logL
+
+ggplot(sel, aes(x = iteration, y = logL)) +
+  geom_line(color = "darkblue") +
+  geom_hline(yintercept = (mean+std), color = "darkred", linetype = "dotted", size = 1) +
+  geom_hline(yintercept = mean, color = "darkred", linetype = "dashed", size = 1) +
+  geom_hline(yintercept = (mean-std), color = "darkred", linetype = "dotted", size = 1) +
+  labs(x = "iteration", y = "log Likelihood") +
+  theme_standard
+```
+
+Trace values of F<sub>ST</sub> over iterations.
+
+```{r fig.height=4, fig.width=12}
+
+library(coda)
+
+temp <- sel %>%
+  select(iteration, "1_2", "1_4", "1_7", "1_10", "2_2", "2_4", "2_7","2_10") %>%
+  gather(idx, value, 2:9, -iteration) %>%
+  mutate(idx = ordered(idx, levels = idx_order))
+
+# Recreate an MCMC object with the correct thinning interval
+
+chain <- mcmc(sel, thin = 50)
+
+str(chain)
+
+#Plot library-specific Fst coefficients
+
+ggplot() +
+  geom_point(data = temp, aes(x = iteration, y = value, colour = idx), size = 1, alpha = 0.25) +
+  labs(x = "Iteration", y = "Mean Fst Per Index") +
+  theme_standard +
+  theme(legend.text=element_text(size=12), legend.title=element_text(size=12)) +
+  guides(colour = guide_legend(nrow=1, byrow=TRUE, override.aes = list(size = 5, alpha = 1)))
+
+#2_10 and 2_2 has mean Fst ~0.10, 2_4 ~0.04 all else around 0
+
+```
+
+Verify that sample size used to estimate posteriors is sufficiently large. Effective sample size to estimate parameters can be smaller than value used for BayeScan run (50,000). MCMC explores the parameter space by moving in small steps. Therefore, two consecutive values will be strongly correlated; used thinning interval of 50 to reduce autocorrelation. 
+
+Check correlation between sampled parameter values for thinned chains used to estimate posterior probability. Effective sample size will than value used for BayeScan run (50,000) if there is some correlation.
+
+```{r fig.height=6, fig.width=4}
+
+eff <- as.data.frame(effectiveSize(chain)) %>%
+  dplyr::rename(effSize = `effectiveSize(chain)`) %>%
+  rownames_to_column("parameter") %>%
+  dplyr::mutate(paramtype = ifelse(grepl("fst", parameter), "fst",
+                            ifelse(grepl("alpha", parameter), "alpha",
+                            ifelse(grepl("logL", parameter), "likelihood", "other")))) %>%
+  dplyr::filter(paramtype != "other")
+
+ggplot(eff, aes(x = effSize)) +
+  geom_histogram(binwidth = 5000, color = "black", fill = "darkorange") +
+  geom_vline(xintercept = 60000, color = "darkred", linetype = "dashed") +
+  facet_grid(paramtype ~ . , scales = "free") +
+  theme_standard
+
+```
+
+Effective size of the likelihood sample should be smaller than the input value of 50,000. Fst parameters are less affected by correlation because corerlation decreases more rapidly for Fst values than for likelihood values. 
+
+**Test for Convergence**
+
+Test for non-convergence of chains using Geweke's convergence diagnostic which compares the means of the first and last parts of the MC and reports the z-scores for each parameter.
+
+For ÃÂ± = 0.05, the critical values of z are Ã¢ÂÂ 1.96 and +1.96, i.e. if z values fall within those boundaries indicative of equality of means and therefore convergence of MCMC. On the otherhand z < -1.96 or z > 1.96 null hypothesis of  equality of means should be rejected.
+
+```{r fig.height=6, fig.width=4}
+
+geweke <- geweke.diag(chain, frac1 = 0.1, frac2 = 0.5)
+
+z <- as.data.frame(geweke$z) %>%
+  dplyr::rename(z = `geweke$z`) %>%
+  rownames_to_column("parameter") %>%
+  dplyr::mutate(paramtype = ifelse(grepl("fst", parameter), "fst",
+                                   ifelse(grepl("alpha", parameter), "alpha",
+                                          ifelse(grepl("logL", parameter), "likelihood", "other")))) %>%
+  dplyr::filter(paramtype != "other")
+
+ggplot(z, aes(x = z)) +
+  geom_histogram(color = "black", fill = "darkorange") +
+  geom_vline(xintercept = -1.96, color = "darkred", linetype = "dashed") +
+  geom_vline(xintercept = 1.96, color = "darkred", linetype = "dashed") +
+  facet_grid(paramtype ~ . , scales = "free") +
+  theme_standard
+
+```
+
+**Other Output Files**
+
+Results of pilot runs are in `*_prop.txt`. Acceptance rates for different model parameters are in `*_AccRte.txt`, alle frequencies (posterior mean) for each locus and grouping are in `*_freq.txt`.
+
+**Compare Fst, Alpha, and q-values**
+
+The file `_fst.txt` contains one locus per row (first column). Columns 2-4 correspond to posterior probability for the model: including selection (`prob`), log10 of posterior odds for the model including selection (`log10PO`), q-value for the model including selection (`qval`). These are related to the test of local adaptation, i.e. the mode including locus-specific effect alpha.
+
+The fifth column is estimated locus-specific effect alpha (`alpha`) which indicates the strength and direction, where positive values indicate diversifying selection. The final column is the locus-specific F<sub>ST</sub> coefficient averaged over populations (`fst`). 
+Use the q-value to determine if a locus is a good candidate for a locus being under the influence of selection.
+
+```{r message=FALSE, warning=FALSE}
+
+fst <- read_table2("/home/kdye/Nmegalops/libeffects/notropis/pr1k_burn200k_n30k_thin50_fst.txt",
+                   skip = 1, col_names = c("temp", "prob", "log10PO", "qval", "alpha", "fst")) %>%
+  select(-temp) %>%
+  dplyr::mutate(log10q = log10(qval))
+
+fst <- bind_cols(Loci_Lib, fst)
+```
+
+**Distribution of q-values**
+
+```{r fig.height=4, fig.width=5}
+
+ggplot(fst, aes(x = qval)) +
+  geom_histogram(binwidth = 0.025, color = "black", fill = "darkorange") +
+  geom_vline(xintercept = (0.05), color = "darkred", linetype = "dashed") +
+  scale_y_sqrt() +
+  labs(x = "q-value", y = "Sqrt of Number of Loci") +
+  theme_standard
+
+dplyr::count(fst, qval <= 0.05) # 8 true 
+dplyr::count(fst, qval <= 0.01) # 5 true
+dplyr::count(fst, qval <= 0.001) # 2 true
+```
+
+*Distribution of Estimated F<sub>ST</sub> and Locus-specific Alpha Component*
+
+*Alpha = 0: no selection
+*Alpha > 0: positive selection
+*Alpha < 0: balancing selection
+
+```{r fig.height=4, fig.width=12}
+
+p1 <- ggplot(fst, aes(x = alpha)) +
+  geom_histogram(color = "black", fill = "darkorange") +
+  geom_vline(xintercept = 0, color = "darkred", linetype = "dashed") +
+  scale_y_sqrt() +
+  labs(x = "Alpha", y = "Sqrt Number of Loci") +
+  theme_standard
+
+p2 <- ggplot(fst, aes(x = fst)) +
+  geom_histogram(color = "black", fill = "darkorange") +
+  scale_y_sqrt() +
+  labs(x = "Fst", y = "Sqrt Number of Loci") +
+  theme_standard
+
+p3 <- ggplot(fst, aes(x = alpha, y = fst)) +
+  geom_point(shape = 1, size = 2) +
+  geom_smooth(color = "darkblue", linetype = "dashed") +
+  geom_vline(xintercept = 0, color = "darkred", linetype = "dashed") +
+  labs(x = "Locus-specific Effect Alpha", y = "Mean Fst per Locus") +
+  theme_standard
+
+ggarrange(p1, p2, p3, ncol = 3)
+
+```
+
+*Relationship log10(qvalue) and F<sub>ST</sub> per Locus*
+
+```{r fig.height=4, fig.width=5}
+
+ggplot(fst, aes(x = log10q, y = fst)) +
+  geom_point(shape = 1, size = 2, color = "black") +
+  geom_vline(xintercept = log10(0.05), color = "darkred", linetype = "dashed") +
+  geom_vline(xintercept = log10(0.01), color = "darkred", linetype = "dashed") +
+  geom_vline(xintercept = log10(0.001), color = "darkred", linetype = "dashed") +
+  geom_hline(aes(yintercept = mean(fst, na.rm = TRUE)), 
+             color = "darkblue", linetype = "dashed", size = 0.5) +
+  geom_hline(aes(yintercept = quantile(fst, 0.05, na.rm = TRUE)), color = "darkblue", linetype = "dashed", size = 0.5) +
+  labs(x = "log10(qvalue)", "Fst per Locus") +
+  theme_standard
+
+```
+
+Identify outlier loci with q-value < 0.05
+
+```{r}
+outlier_bayescan <- fst %>%
+  dplyr::filter(qval <= 0.05) %>%
+  select(c(LOCUS, fst, qval))
+
+write_delim(outlier_bayescan, "/home/kdye/Nmegalops/libeffects/notropis/outlier_bayescan", delim = "\t")
+
+Remove_Outlier <- outlier_bayescan$LOCUS
+
+write.table(Remove_Outlier, "/home/kdye/Nmegalops/libeffects/notropis/bayescan_outliers",
+            col.names = FALSE, row.names = FALSE, quote = FALSE)
+
+```
+8 library effect outlier loci detected with BayeScan
+
+#### Assess Patterns Among Library Outliers
+
+After removing loci driving library effects in PCA, it is difficult to assess the effect of removing additional loci identified as library outliers by BayeScan. Therefore, use PCA to assess the patterns driven by library outliers identified by BayeScan.
+
+```{r fig.height=5, fig.width=5, message=FALSE, warning=FALSE}
+
+# retain only outlier loci identified by bayescan
+
+bs_outlier_0.05 <- read_delim("/home/kdye/Nmegalops/libeffects/notropis/outlier_bayescan", delim = "\t")
+
+remove_loci <- tibble(locNames(notr_filt.gen)) %>%
+  dplyr::rename(LOCUS = `locNames(notr_filt.gen)`) %>%
+  anti_join(bs_outlier_0.05)
+
+remove_loci <- remove_loci$LOCUS
+
+temp.gen <- genind.rem.loci(notr_filt.gen, remove_loci)
+
+strata(temp.gen) <- popdata[match(indNames(temp.gen),popdata$INDV),]
+setPop(temp.gen) <- ~LIB/INDEX
+
+# PCA
+
+x <- tab(temp.gen, freq=TRUE, NA.method="mean")
+
+pca <- dudi.pca(df = x, center = TRUE, scale = FALSE, scannf = FALSE, nf = 10)
+
+eig <- eigenvalues(pca)
+plot.eigen.variance(eig)
+
+# Plot
+
+#pc_inds  <- PC.ind(pca) %>%
+  dplyr::rename(INDV = `LIB_ID`) %>%
+  separate(hiseq_id, into = c("Zone", "Lib_INDV"), sep = 3, remove = TRUE) %>%
+  separate(Lib_INDV, into = c("temp", "id"), sep = 1, remove = TRUE) %>%
+  unite("INDV", c("Zone", "id"), sep="_") %>%
+  inner_join(ind_stats_yoy_f15) %>%
+  select(-(temp))
+
+PC_Inds <- PC.ind(pca) %>%
+  dplyr::rename(INDV = `LIB_ID`)%>%
+  left_join(popdata)%>%
+  unite("LIB_IDX", LIB:INDEX, remove = FALSE)
+
+# Plot by Index
+PCA <- ggplot(PC_Inds, aes(x = Axis1, y = (Axis2*-1), fill = LIB_IDX)) +
+  geom_point(alpha = 0.75, shape =  21, size = 2.5) +
+  #geom_text_repel(aes(label = Sample.ID), max.overlaps = Inf, box.padding=0.75) +
+  labs(x = paste("PC1:", round(eig[1, 3], digits = 3), "%"),
+       y = paste("PC2:", round(eig[2, 3], digits = 3), "%"), title="PCA") +
+  ggtitle("By Index") +
+  theme_bw() +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        axis.text.x=element_text(color="black"),
+        axis.text.y=element_text(color="black"),
+        plot.title = element_text(hjust = 0.5)) +
+  stat_ellipse(level = 0.95, aes(color=LIB_IDX))
+PCA
+
+#Plot by population
+PCA2 <- ggplot(PC_Inds, aes(x = Axis1, y = (Axis2*-1), fill = POP)) +
+  geom_point(alpha = 0.75, shape =  21, size = 2.5) +
+  #geom_text_repel(aes(label = Sample.ID), max.overlaps = Inf, box.padding=0.75) +
+  labs(x = paste("PC1:", round(eig[1, 3], digits = 3), "%"),
+       y = paste("PC2:", round(eig[2, 3], digits = 3), "%"), title="PCA") +
+  ggtitle("By Index") +
+  theme_bw() +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        axis.text.x=element_text(color="black"),
+        axis.text.y=element_text(color="black"),
+        plot.title = element_text(hjust = 0.5)) +
+  stat_ellipse(level = 0.95, aes(color=POP))
+PCA2
+
+#Plot by population
+PCA3 <- ggplot(PC_Inds, aes(x = Axis1, y = (Axis2*-1), fill = SPECIES)) +
+  geom_point(alpha = 0.75, shape =  21, size = 2.5) +
+  #geom_text_repel(aes(label = Sample.ID), max.overlaps = Inf, box.padding=0.75) +
+  labs(x = paste("PC1:", round(eig[1, 3], digits = 3), "%"),
+       y = paste("PC2:", round(eig[2, 3], digits = 3), "%"), title="PCA") +
+  ggtitle("By Index") +
+  theme_bw() +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        axis.text.x=element_text(color="black"),
+        axis.text.y=element_text(color="black"),
+        plot.title = element_text(hjust = 0.5))
+  #stat_ellipse(level = 0.95, aes(color=SPECIES))
+PCA3
+
+
+##Looks like this is pulling out some loci driving species differences based on PCA3, but just going to remove and move on
+```
+
+Identify individuals driving PCA patterns.
+
+```{r fig.height=5, fig.width=10, message=FALSE, warning=FALSE}
+
+# loading plot individuals
+
+ggplot(PC_Inds, aes(x = INDV, y = Loading1, fill = POP)) +
+  geom_bar(stat = "identity") +
+  geom_hline(aes(yintercept = quantile(PC_Inds$Loading1, 0.95)), 
+  color = "red") +
+  facet_grid(. ~ LIB_IDX, scales = "free") +
+  labs(x = "Individual", y = "Loading Principle Component 1") +
+  theme_standard +
+  theme(axis.text.x = element_blank())
+
+ggplot(PC_Inds, aes(x = INDV, y = Loading2, fill = POP)) +
+  geom_bar(stat = "identity") +
+  geom_hline(aes(yintercept = quantile(PC_Inds$Loading2, 0.95)), 
+  color = "red") +
+  facet_grid(. ~ LIB_IDX, scales = "free") +
+  labs(x = "Individual", y = "Loading Principle Component 2") +
+  #scale_fill_manual(values=region_col) +
+  #scale_color_manual(values=region_col) +
+  theme_standard +
+  theme(axis.text.x = element_blank())
+
+```
+
+#Remove Library Outlier Loci 
+
+Remove the outlier loci found in both OutFlank and Bayescan
+```{r}
+#OutFlank
+
+outflank_outliers <- read.table("/home/kdye/Nmegalops/libeffects/notropis/outflank_outliers")
+#6
+
+#Bayescan
+bayescan_outliers <- read.table("/home/kdye/Nmegalops/libeffects/notropis/bayescan_outliers")
+#8
+
+libeff_outliers <- full_join(outflank_outliers, bayescan_outliers)
+
+remove_loci <- libeff_outliers$V1
+
+write.table(remove_loci, "/home/kdye/Nmegalops/libeffects/notropis/all_outliers",
+            col.names = FALSE, row.names = FALSE, quote = FALSE)
+#Overlap in 4 loci between outflank and bayescan so removing 10 total loci for library effects
+```
+
+#FINAL genind
+```{r}
+notr_final.gen <- genind.rem.loci(notr_filt.gen, remove_loci)
+
+nInd(notr_final.gen) #286
+
+nLoc(notr_final.gen) #3,742
+
+writeGenPop(notr_final.gen, file.name = "/home/kdye/Nmegalops/genpops/notr_final.gen", comment = "notr_final.gen")
+```
+
+#FINAL vcf
+```{bash}
+#remove loci
+dos2unix /home/kdye/bin/remove_loci_vcf.sh
+
+bash /home/kdye/bin/remove_loci_vcf.sh all_outliers SNP.FINAL.recode.vcf
+
+# After filtering, kept 20771 out of a possible 20810 Sites
+
+vcftools --vcf vcf-minus-contigs.recode.vcf --out notr_final --recode --recode-INFO-all
+```
+
+##Final stats
+```{bash}
+vcftools --vcf notr_final.recode.vcf --out temp/notr_final --depth
+vcftools --vcf notr_final.recode.vcf --out temp/notr_final --site-mean-depth
+vcftools --vcf notr_final.recode.vcf --out temp/notr_final --missing-indv
+vcftools --vcf notr_final.recode.vcf --out temp/notr_final --missing-site
+vcftools --vcf notr_final.recode.vcf --out temp/notr_final --het
+```
+
+```{r}
+lmiss <- read.table("/home/kdye/Nmegalops/libeffects/notropis/temp/notr_final.lmiss", 
+                  stringsAsFactors = FALSE, header = TRUE)
+                  
+imiss <- read.table("/home/kdye/Nmegalops/libeffects/notropis/temp/notr_final.imiss", 
+                  stringsAsFactors = FALSE, header = TRUE)
+```
+
+
+```{r}
+Final_Ind_Stats <- read.ind.stats(dir = "/home/kdye/Nmegalops/libeffects/notropis/temp", vcf = "notr_final")
+
+Final_Loci_Stats <- read.loc.stats(dir = "/home/kdye/Nmegalops/libeffects/notropis/temp", vcf = "notr_final")
+
+#Number loci
+loci <- as.data.frame(Final_Loci_Stats$CHR) %>%
+  distinct() %>%
+  dplyr::rename(LOCUS = `Final_Loci_Stats$CHR`)
+
+#Number SNPs
+SNPs <- as.data.frame(Final_Loci_Stats$CHR) %>%
+  dplyr::rename(SNPs = `Final_Loci_Stats$CHR`)
+
+#Number individuals
+inds <- as.data.frame(Final_Ind_Stats$INDV) %>%
+  dplyr::rename(IND = `Final_Ind_Stats$INDV`)
+
+#Final stats
+dplyr::count(inds) #286
+dplyr::count(SNPs) #20,771
+dplyr::count(loci) #3,742
+
+dplyr::count(SNPs)/dplyr::count(loci)
+```
+
+***Final dataset contains 286 individuals, 3,742 loci and ~5.55 SNPs/contig***
+
+#FINAL PCA
+
+```{r}
+##Assign Strata
+
+#Read in genpop
+notr_final.gen <- read.genepop(file = "/home/kdye/Nmegalops/genpops/notr_final.gen", ncode = 3L, quiet = FALSE)
+
+#Read in popdata
+popdata <- read.csv(file = "/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE)
+
+strata(notr_final.gen) <- popdata[match(indNames(notr_final.gen),popdata[,1]),]
+
+setPop(notr_final.gen) <- ~POP
+
+popNames(notr_final.gen)
+#"DOC" "DRB" "DRP" "GDL" "IDC" "PNT" "PR1" "PR2" "PR3" "PR4" "PR5" "SFC"
+```
+
+Final PCA
+```{r}
+X <- tab(notr_final.gen, freq=TRUE, NA.method="mean")
+PCA <- dudi.pca(df = X, center = TRUE, scale = FALSE, scannf = FALSE, nf = 10)
+eig <- eigenvalues(PCA)
+plot.eigen.variance(eig)
+
+PC_Inds <- PC.ind(PCA) %>%
+  dplyr::rename(INDV = `LIB_ID`)%>%
+  left_join(popdata) 
+
+PCA <- ggplot(PC_Inds, aes(x = Axis1, y = (Axis2*-1), fill = BODY, shape = SPECIES, color = BODY)) +
+  geom_point(alpha = 0.75, size = 3) +
+  #geom_text_repel(aes(label = Sample.ID), max.overlaps = Inf, box.padding=0.75) +
+  labs(x = paste("PC1:", round(eig[1, 3], digits = 3), "%"),
+       y = paste("PC2:", round(eig[2, 3], digits = 3), "%"), title="PCA") +
+  ggtitle("By Water Body and Species") +
+   scale_fill_discrete(name = "BODY") +
+  scale_shape_discrete(name = "SPECIES") +
+  theme_bw() +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        axis.text.x=element_text(color="black"),
+        axis.text.y=element_text(color="black"),
+        plot.title = element_text(hjust = 0.5)) +
+  stat_ellipse(level = 0.95)
+PCA
+
+
+PCA <- ggplot(PC_Inds, aes(x = Axis1, (y = Axis2*-1), fill = SPECIES)) +
+  geom_point(alpha = 0.75, shape =  21, size = 2.5) +
+  theme(legend.position = "right", legend.box = "vertical") +
+  labs(x = paste("PC1:", round(eig[1, 3], digits = 3), "%"),
+       y = paste("PC2:", round(eig[2, 3], digits = 3), "%"), title="3,742") +
+  scale_fill_manual(values=c("#FF0000","#1C35FB")) +
+  scale_color_manual(values=c("#FF0000","#1C35FB")) +
+  theme_bw() +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        axis.text.x=element_text(color="black"),
+        axis.text.y=element_text(color="black"),
+        plot.title = element_text(hjust = 0.5)) +
+  #stat_ellipse(level = 0.95, aes(color = SPECIES)) +
+  theme_standard
+#10x6
+```
