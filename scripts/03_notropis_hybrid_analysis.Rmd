@@ -1,0 +1,141 @@
+---
+title: "Notropis hybrid analysis"
+author: "K. Dye"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+#Load libraries
+```{r}
+library(openxlsx)
+```
+
+#Read in popdata
+```{r}
+#retain cyt b individuals
+popdata <- read.csv(file = "/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE)
+
+cytb <- popdata %>%
+  filter(CYTB == "Y") 
+
+cytb_inds <- cytb %>%
+  select(INDV)
+
+write.table(cytb_inds, "/home/kdye/Nmegalops/hybrid/newhybrids/cytb/cytb_inds",
+col.names = FALSE, row.names = FALSE, quote = FALSE)
+```
+
+# 1) vcf file
+  ## filter to keep only cytb individuals in vcf
+```{bash}
+cp -s ../../../genpops/notr_final.recode.vcf .
+
+vcftools --vcf notr_final.recode.vcf --out notr_newhybrids --keep cytb_inds --recode --recode-INFO-all
+```
+
+# 2) File of individuals in group 1
+```{r}
+ama <- cytb %>%
+  filter(SPECIES == "amabilis") %>%
+  select(INDV)
+
+write.table(ama, "/home/kdye/Nmegalops/hybrid/newhybrids/cytb/amabilis",
+col.names = FALSE, row.names = FALSE, quote = FALSE)
+```
+# 3) File of individuals in group 2
+```{r}
+meg <- cytb %>%
+  filter(SPECIES == "megalops") %>%
+  select(INDV)
+
+write.table(meg, "/home/kdye/Nmegalops/hybrid/newhybrids/cytb/megalops",
+col.names = FALSE, row.names = FALSE, quote = FALSE)
+```
+
+#Preparing directories
+```{bash}
+cd ~/Nmegalops/hybrid/newhybrids/cytb
+for i in $(seq 1 5); do mkdir run_$i; done
+```
+
+#Making files for new Hybrids
+```{bash}
+for i in $(seq 1 5); do 
+echo "Processing run $i"
+cd run_$i
+Rscript ~/bin/NewHybrids_vcf_to_txt.r ~/Nmegalops/hybrid/newhybrids/cytb/notr_newhybrids.recode.vcf newhybrids_input.txt
+cd ..
+done
+```
+
+#Adding header
+```{bash}
+for i in $(seq 1 5); do 
+INDV=$(vcfsamplenames ~/Nmegalops/hybrid/newhybrids/cytb/notr_newhybrids.recode.vcf | wc -l);
+sed -i "1 s/^/NumIndivs $INDV\nNumLoci 150\nDigits 1\nFormat Lumped\n\n/" run_$i/newhybrids_input.txt;
+done
+```
+
+#Adding the characterizations
+```{bash}
+nano genotype_frequencies.txt
+```
+Pasted info
+   5
+ 1_Bx      0.00000    0.250000    0.250000   0.50000
+ 0_Bx      0.50000    0.250000    0.250000   0.00000
+ F1        0.00000     .5          .5        0.00000
+ Pure_1    0.00000    0.00000     0.00000    1.00000
+ Pure_0    1.00000    0.00000     0.00000    0.00000
+
+#Running iterations
+```{bash}
+for i in $(seq 1 5); do
+cd run_$i
+RAND1=$(echo $((RANDOM)))
+RAND2=$(echo $((RANDOM)))
+echo $RAND1 $RAND2 > starting_seeds.txt
+newhybs -d newhybrids_input.txt -c ../genotype_frequencies.txt -s $RAND1 $RAND2 --no-gui &
+sleep 5
+cd ..
+done
+}
+```
+
+#Formatting the output data
+```{bash}
+for i in $(seq 1 5); do
+cd run_$i
+vcfsamplenames ~/Nmegalops/newhybrids/cytb/notr_newhybrids.recode.vcf > tmp.indv
+sed -i "1 s/^/Indv\n/" tmp.indv
+paste tmp.indv aa-ScaledLikelihood.txt > aa-ScaledLikelihood_indv.txt
+rm tmp.indv
+Rscript ~/bin/NewHybrids_results_format.r amabilis ../amabilis megalops ../megalops
+cd ..
+done
+```
+
+```{R}
+dat <- read.table("/home/kdye/Nmegalops/hybrid/newhybrids/cytb/run_1/aa-ScaledLikelihood_edit.txt", head=T, sep="\t")
+dat$Max <- apply(dat[,2:ncol(dat)],1,max)
+wb <- write.xlsx(dat, "MxA.xlsx", colNames = T, sheetName="run1")
+dat2 <- read.table("/home/kdye/Nmegalops/hybrid/newhybrids/cytb/run_2/aa-ScaledLikelihood_edit.txt", head=T, sep="\t")
+dat2$Max <- apply(dat2[,2:ncol(dat2)],1,max)
+addWorksheet(wb, sheetName = "run2")
+writeData(wb, "run2", dat2)
+dat3 <- read.table("/home/kdye/Nmegalops/hybrid/newhybrids/cytb/run_3/aa-ScaledLikelihood_edit.txt", head=T, sep="\t")
+dat3$Max <- apply(dat3[,2:ncol(dat3)],1,max)
+addWorksheet(wb, sheetName = "run3")
+writeData(wb, "run3", dat3)
+dat4 <- read.table("/home/kdye/Nmegalops/hybrid/newhybrids/cytb/run_4/aa-ScaledLikelihood_edit.txt", head=T, sep="\t")
+dat4$Max <- apply(dat4[,2:ncol(dat4)],1,max)
+addWorksheet(wb, sheetName = "run4")
+writeData(wb, "run4", dat4)
+dat5 <- read.table("/home/kdye/Nmegalops/hybrid/newhybrids/cytb/run_5/aa-ScaledLikelihood_edit.txt", head=T, sep="\t")
+dat5$Max <- apply(dat5[,2:ncol(dat5)],1,max)
+addWorksheet(wb, sheetName = "run5")
+writeData(wb, "run5", dat5)
+addWorksheet(wb, sheetName = "Summary")
+saveWorkbook(wb, "/home/kdye/Nmegalops/hybrid/newhybrids/cytb/MxA.xlsx", overwrite = TRUE)
+```
