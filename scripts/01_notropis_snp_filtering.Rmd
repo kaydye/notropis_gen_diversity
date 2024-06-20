@@ -255,9 +255,9 @@ cp SNP.TRS.F03.recode.vcf SOL/
 cd SOL
 SOL.filter1.no_mac.sh SNP.TRS.F03.recode.vcf
 
-#The Final_Filter.count in the SOL folder needs to be exported and evaluated using SOL_filter_no_mac to determine the best filtering path
+#The Final_Filter.count in the SOL folder needs to be exported and evaluated using SOL_Filter.xlsx to determine the best filtering path
 
-#A.1.1.1.2.2.3.1.2.SNP.finalb.1 retains the most SNPs, contigs, and individuals (28,723, 4,377, 295) 
+#A.1.1.1.2.2.3.1.2.SNP.finalb.1 retains the most SNPs, contigs, and individuals
 
 cp vcf/A.1.1.1.2.2.3.1.2.SNP.finalb.1.recode.vcf ../
 cd ..
