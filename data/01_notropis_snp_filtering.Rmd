@@ -124,8 +124,6 @@ lmiss <- read.table("/home/kdye/Nmegalops/filtering/notropis/040224/temp/SNP.TRS
 remove_snps_meg <- lmiss %>%
   filter(F_MISS > 0.9) %>%
   select(CHR, POS)
-
-#7952 SNPs
 ```
 
 #NOTROPIS AMABILIS
@@ -164,15 +162,11 @@ lmiss <- read.table("/home/kdye/Nmegalops/filtering/notropis/040224/temp/SNP.TRS
 remove_snps_ama <- lmiss %>%
   filter(F_MISS > 0.9) %>%
   select(CHR, POS)
-
-#19,111 SNPs
 ```
 
 # Combine two tables of SNP locations from each species into one file to be removed from the joint dataset
 ```{r}
 remove_snps <- rbind(remove_snps_meg, remove_snps_ama)
-
-#27063 SNPs
 
 write.table(remove_snps, file = "/home/kdye/Nmegalops/filtering/notropis/040224/missdata_snps", 
             col.names= FALSE, row.names = FALSE, quote = FALSE)
@@ -212,13 +206,7 @@ vcftools --vcf SNP.TRS.F01.doub.recode.vcf --out SNP.TRS.F02.doub --recode --rec
 
 sort contigs.txt | uniq -d > duplicate.snps
 
-#17 duplicate SNPs, some SNPs were identified as Singletons in N.amabilis but Doubletons in N.megalops
-
-#example of this SNP being a "S" in amabilis and "D" in megalops
-#dDocent_Contig_9936	36	S	A	GDL_004
-#dDocent_Contig_9936	36	D	T	PR3_006
-
-#going to remove the duplicate snps from the doubleton vcf
+#remove the duplicate snps from the doubleton vcf
 
 vcftools --vcf SNP.TRS.F02.doub.recode.vcf --out SNP.TRS.F02a.doub --recode --recode-INFO-all --exclude-positions duplicate.snps
 
@@ -232,7 +220,6 @@ grep "dDocent" SNP.TRS.F02.vcf | cut -f 1,2 | uniq | tail -n +2 | wc -l
 #7. Filter loci that have high variation in depth across a locus within an individual
 ```{bash}
 vcftools --vcf SNP.TRS.F02.vcf --out out --geno-depth
-
 ```
 
 ```{R}
