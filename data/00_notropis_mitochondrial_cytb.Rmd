@@ -9,7 +9,7 @@ output: html_document
 ```{bash}
 unzip raw_seq_kd.zip
 ```
-# Should have a list of the ab1 files for the forward and reverse reads of each individual
+## Should have a list of the ab1 files for the forward and reverse reads of each individual
 
 #Geneious was used to align forward and reverse sequences (ab1 files) and create a consensus fasta file for each individual.
   #Some individuals were removed due to poor sequence quality
@@ -32,19 +32,19 @@ sed -i '1s/^>.*/>Pimephales vigilax/' pimephales_vigilax.fasta
 
 #Create multi fasta with all consensus and outgroup sequences
 
-##Linearizing outgroup fasta files
+## Linearizing outgroup fasta files
 ```{bash}
 for file in *.fasta; do
     sed -e 's/\(^>.*$\)/#\1#/' "$file" | tr -d "\r" | tr -d "\n" | sed -e 's/$/#/' | tr "#" "\n" | sed -e '/^$/d' > "${file%.fasta}_linear.fasta"
 done
 ```
 
-##Renaming of fasta files
+## Renaming of fasta files
 ```{bash}
 cut -d " " -f1 Notropis_cytb_consensus.fasta | sed 's/Nucleotide_alignment_//g' > Notropis_cytb_consensus_rename.fasta
 ```
 
-##Create multi fasta to be aligned
+## Create multi fasta to be aligned
 ```{bash}
 cat Notropis_cytb_consensus_rename.fasta ../outgroups/*linear.fasta > all.fasta
 ```
@@ -54,23 +54,23 @@ cat Notropis_cytb_consensus_rename.fasta ../outgroups/*linear.fasta > all.fasta
 ../programs/bin/bin/clustalo -i all.fasta -o align.fasta --outfmt=fasta
 ```
 
-##Check alignment manually using UGene
-  ##Reimport alignment as ugene_alignment.fasta
+## Check alignment manually using UGene
+  ## Reimport alignment as ugene_alignment.fasta
 
 #Trim
-##Linearize multi-fasta for trimming
+## Linearize multi-fasta for trimming
 ```{bash}
 awk '/^>/ {if (seq != "") {print seq; seq="";} print; next} {seq = seq $0} END {if (seq != "") print seq}' ugene_alignment.fasta > linear_alignment.fasta
 ```
 
-#Trim first 26 bases and last 29 bases off each sequence
+## Trim first 26 bases and last 29 bases off each sequence
 ```{bash}
 awk '/^>/ {if (seq != "") {print substr(seq,27,length(seq)-55); seq="";} print; next} {seq = seq $0} END {if (seq != "") print substr(seq,27,length(seq)-55)}' linear_alignment.fasta > trimmed_alignment.fasta
 ```
 *** Trimmed alignment contains 1,121 bp and 56 individuals + outgroups ***
 
-##Renamed individuals manually for ease of identification
-  ##Reimported as final_trim.fasta
+## Renamed individuals manually for ease of identification
+  ## Reimported as final_trim.fasta
 
 
 #Run model test
