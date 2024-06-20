@@ -11,13 +11,13 @@ unzip raw_seq_kd.zip
 ```
 # Should have a list of the ab1 files for the forward and reverse reads of each individual
 
-#Forward and reverse sequences (ab1 files) aligned using Geneious and consensus fasta files for each individual were made.
-  ##Some individuals were removed due to poor sequence quality
-    ###removed NM-116, NM-230, NM-259, NM-320
-  ##Consensus sequences are in /data/Notorpis_consensus_seqs
-  ##Outgroup fasta sequences obtained from GenBank, found in /data/Notropis_outgroup_seqs
+# Forward and reverse sequences (ab1 files) aligned using Geneious and consensus fasta files for each individual were made.
+  ## Some individuals were removed due to poor sequence quality
+    ### removed NM-116, NM-230, NM-259, NM-320
+  ## Consensus sequences are in /data/Notorpis_consensus_seqs
+  ## Outgroup fasta sequences obtained from GenBank, found in /data/Notropis_outgroup_seqs
 
-#Remove header from outgroup fasta files
+# Remove header from outgroup fasta files
 ```{bash}
 sed -i '1s/^>.*/>Agosia chrysogaster/' agosia_chrysogaster.fasta
 sed -i '1s/^>.*/>Notropis atherinoides/' notropis_atherinoides.fasta
