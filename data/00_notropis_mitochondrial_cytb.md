@@ -64,7 +64,8 @@ awk '/^>/ {if (seq != "") {print seq; seq="";} print; next} {seq = seq $0} END {
 awk '/^>/ {if (seq != "") {print substr(seq,27,length(seq)-55); seq="";} print; next} {seq = seq $0} END {if (seq != "") print substr(seq,27,length(seq)-55)}' linear_alignment.fasta > trimmed_alignment.fasta
 ```
 
-<span style="color:red"> *Trimmed alignment contains 1,121 bp and 56 individuals + outgroups*</span> 
+<span style="color:red">*Trimmed alignment contains 1,121 bp and 56 individuals + outgroups*</span> 
+<span style="color:blue">some *This is Blue italic.* text</span>
 
 #### Run model test
 ```{bash}
