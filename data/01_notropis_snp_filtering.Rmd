@@ -47,7 +47,7 @@ source("/home/kdye/bin/PCA.R")
 charts.sh TotalRawSNPs.vcf
 ```
 
-#1. Split Multiallelic Freebayes calls
+#1.Split Multiallelic Freebayes calls
 ```{bash}
 vcfallelicprimitives -k -g TotalRawSNPs.vcf | sed 's:\.|\.:\.\/\.:g' > TRS.prim
 ```
