@@ -71,7 +71,7 @@ awk '/^>/ {if (seq != "") {print substr(seq,27,length(seq)-55); seq="";} print; 
 modeltest−ng −i alignment_mega.fa 
 ```      
 
-##### Phylogenetic Reconstruction (BEAST)
+#### Phylogenetic Reconstruction (BEAST)
 
 ###### Beauti  
 ```{GUI}
