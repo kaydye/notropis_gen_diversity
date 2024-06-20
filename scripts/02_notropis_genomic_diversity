@@ -1,1 +1,329 @@
+---
+title: "Notropis_ddRAD_040224"
+author: "K. Dye"
+date: "2024-04-09"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+#Load libraries
+```{r}
+library('vcfR')
+library('adegenet')
+library('dartR')
+library('zvau')
+
+source("/home/kdye/bin/genind.R")
+source("/home/kdye/bin/PCA.R")
+source("/home/kdye/bin/libraries.R")
+source("/home/kdye/bin/ggplot.R")
+```
+
+```{r}
+site_colors <- c("#F5453E", "#04DC7A", "#028BCC", "#FF8142","#C161FF" )
+
+map_colors <- c("#b53333", "#007eb0")
+
+rev_map_colors <- c("#007eb0", "#b53333")
+```
+
+#Load Genind
+```{r}
+notr_final.gen <- read.genepop(file = "/home/kdye/Nmegalops/genpops/notr_final.gen", ncode = 3L, quiet = FALSE)
+popdata <- read.csv(file = "/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE)
+
+#set strata
+strata(notr_final.gen) <- popdata[match(indNames(notr_final.gen),popdata[,1]),]
+head(notr_final.gen@strata) # ensure strata correct
+```
+
+#DAPC
+
+K-means was used to identify the genetic clusters (i.e. the individuals of each species) to ensure all of one species was not lost through out the filtering process.
+
+```{r}
+#Assign strata
+setPop(notr_final.gen) <- ~SPECIES
+
+#Defining groups
+#Picking a specific K
+grp <- find.clusters(notr_final.gen, max.n.clust=40, n.pca=400, n.clust =2, method="kmeans")
+
+#Comparing K groups to predefined groupings 
+setPop(notr_final.gen)<- ~SPECIES
+table(pop(notr_final.gen), grp$grp)
+
+#             1   2
+#  megalops  241  0
+#  amabilis   0  45
+
+
+#Centering genind object
+X <- scaleGen(notr_final.gen, NA.method="mean", scale=F)
+
+#DAPC cross validation
+xval <- xvalDapc(X, grp$grp, n.pca.max = 300, training.set = 0.9, result = "groupMean", center = TRUE, scale = FALSE, n.pca = NULL, n.rep = 50, xval.plot = TRUE)
+
+#Outputting the cross-validation results
+xval[2:6]
+
+# $`Median and Confidence Interval for Random Chance`
+#      2.5%       50%     97.5% 
+# 0.4461964 0.4989396 0.5648686 
+# 
+# $`Mean Successful Assignment by Number of PCs of PCA`
+#  20  40  60  80 100 120 140 160 180 200 220 240 
+#   1   1   1   1   1   1   1   1   1   1   1   1 
+# 
+# $`Number of PCs Achieving Highest Mean Success`
+# [1] "20"
+# 
+# $`Root Mean Squared Error by Number of PCs of PCA`
+#  20  40  60  80 100 120 140 160 180 200 220 240 
+#   0   0   0   0   0   0   0   0   0   0   0   0 
+# 
+# $`Number of PCs Achieving Lowest MSE`
+# [1] "240"
+
+
+##Plotting DAPC results
+setPop(notr_final.gen)<- ~SPECIES
+
+#Scatter plot
+scatter(xval$DAPC, scree.da=FALSE, cell=0, cex=3, bg="white",cstar=0)
+
+library(ggcompoplot)
+
+#Compoplot
+p.comp<-ggcompoplot(xval$DAPC, notr_final.gen, cols=2, pal=rev_map_colors) + theme(axis.text.x = element_blank()) + ggtitle("K-means 2 Groups (3,742 loci)")
+p.comp
+```
+
+#PCA
+
+```{r}
+#Create color scheme for megalops vs amabilis river basins
+
+#site_color <- c("#00539C","#0074DA", "#2E9DFF", "#78C0FF", "#AAD7FF", "#EEF6FD", "#FF7300", "#FFB477", "#DB9AFF")
+
+popdata$BODY <- factor(popdata$BODY, levels = c("Pecos River", "Devils River", "San Felipe Creek", "Pinto Creek", "Guadalupe River"))
+
+popdata$SPECIES <- factor(popdata$SPECIES, levels = c("megalops", "amabilis"))
+
+#Assign strata
+setPop(notr_final.gen) <- ~SPECIES
+
+X <- tab(notr_final.gen, freq=TRUE, NA.method="mean")
+PCA <- dudi.pca(df = X, center = TRUE, scale = FALSE, scannf = FALSE, nf = 10)
+eig <- eigenvalues(PCA)
+plot.eigen.variance(eig)
+
+PC_Inds <- PC.ind(PCA) %>%
+  dplyr::rename(INDV = `LIB_ID`)%>%
+  left_join(popdata)
+
+PCA <- ggplot(PC_Inds, aes(x = Axis1, y = (Axis2*-1))) +
+  geom_point(aes(shape = SPECIES, fill = BODY), alpha = 0.9, size = 5) +
+  theme(legend.position = "right", legend.box = "vertical") +
+  labs(x = paste("PC1:", round(eig[1, 3], digits = 3), "%"),
+       y = paste("PC2:", round(eig[2, 3], digits = 3), "%"), title="3,742 loci") +
+  #scale_fill_manual(values=site_colors) +
+  #scale_color_manual(values=site_colors) +
+  scale_shape_manual(values=c(21,24), name="", labels=c("megalops","amabilis")) +
+  scale_fill_viridis(discrete=TRUE, option = "D", begin = "0.1") +
+  guides(fill = guide_legend(override.aes = list(shape=21, 24))) +
+  theme_bw() +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        axis.text.x=element_text(color="black"),
+        axis.text.y=element_text(color="black"),
+        plot.title = element_text(hjust = 0.5)) +
+  #stat_ellipse(level = 0.95, aes(color = SPECIES)) +
+  theme_standard
+
+PCA
+#6x10
+```
+
+#Tree
+```{bash}
+#did not do, keeping just in case.
+#sed -E 's/^>([^ ]+).* isolate ([^ ]+).*/>\2/' kevincytb_all.fasta > kevinrename_all.fasta
+
+#iqtree -s kevinrename.fasta -m TEST -B 1000 --prefix kevin_cytb
+```
+
+#Arlequin
+
+```{r}
+#Assign strata
+popdata <- read.csv(file = "/home/kdye/Nmegalops/data/pop.data.csv", header = TRUE)
+
+strata(notr_final.gen) <- popdata[match(indNames(notr_final.gen),popdata[,1]),]
+
+setPop(notr_final.gen) <- ~POP/SPECIES
+
+writeGenPop(notr_final.gen, file.name = "/home/kdye/Nmegalops/arlequin/notropis/notropis.gen", comment = "notropis.gen")
+```
+
+###Create Arlequin files
+```{bash}
+cd /home/kdye/Nmegalops/arlequin/notropis
+
+#Convert genepop to arlequin file
+java8 -jar /usr/local/bin/PGDSpider2-cli.jar -inputfile notropis.gen -inputformat GENEPOP -outputfile notropis.arp -outputformat ARLEQUIN -spid genepop_to_arp_STD.spid
+
+levels(notr_final.gen$pop)
+
+#Rename populations with appropriate name
+sed -i 's/pop_10/PR4_megalops/g' notropis.arp
+sed -i 's/pop_11/PR5_megalops/g' notropis.arp
+sed -i 's/pop_12/SFC_megalops/g' notropis.arp
+sed -i 's/pop_13/DRB_megalops/g' notropis.arp
+sed -i 's/pop_14/DOC_amabilis/g' notropis.arp
+sed -i 's/pop_15/PR2_amabilis/g' notropis.arp
+sed -i 's/pop_1/DOC_megalops/g' notropis.arp
+sed -i 's/pop_2/DRB_amabilis/g' notropis.arp
+sed -i 's/pop_3/DRP_megalops/g' notropis.arp
+sed -i 's/pop_4/GDL_amabilis/g' notropis.arp
+sed -i 's/pop_5/IDC_megalops/g' notropis.arp
+sed -i 's/pop_6/PNT_amabilis/g' notropis.arp
+sed -i 's/pop_7/PR1_megalops/g' notropis.arp
+sed -i 's/pop_8/PR2_megalops/g' notropis.arp
+sed -i 's/pop_9/PR3_megalops/g' notropis.arp
+#Now work with .arp file in Arlequin on the lab desktop...
+
+#Average F-Statistics over all loci
+# Fixation Indices
+#      FST :      0.78387
+#      FSC :      0.18738
+#      FCT :      0.73403
+
+#Percent Variation Explained
+#Among groups :  73.40302
+#Among populations within groups  :   4.98383
+#Within populations :   21.61315
+
+```
+
+#Fst MAX
+```{r}
+#separate the notr_final.gen into species
+
+#amabilis.gen
+MegInds <- filter(popdata, str_detect(SPECIES, "megalops")) #247
+
+rm_megalops <- MegInds$INDV
+
+amabilis.gen <- gen.ind.rem.Ind(notr_final.gen, rm_megalops) #45 individuals
+
+#megalops.gen
+AmaInds <- filter(popdata, str_detect(SPECIES, "amabilis")) #46
+
+rm_amabilis <- AmaInds$INDV
+
+megalops.gen <- gen.ind.rem.Ind(notr_final.gen, rm_amabilis) #241 individuals
+
+#change the allele "names" megalops.gen@all.names
+modified <- sub("^\\d", "1", megalops.gen@all.names)
+
+# Function to modify the numbers in each vector
+modify_numbers <- function(vec) {
+  modified_vec <- sub("^\\d", "1", vec)
+  return(modified_vec)
+}
+
+# Apply the modification function to each vector in the list
+modified_list <- lapply(megalops.gen@all.names, modify_numbers)
+
+#put the list back into the genind
+megalops.gen@all.names <- modified_list
+
+#repool the geninds back together
+pooled_gens <- repool(amabilis.gen, megalops.gen)
+
+#set pop
+setPop(pooled_gens) <- ~POP/SPECIES
+
+writeGenPop(pooled_gens, file.name = "/home/kdye/Nmegalops/arlequin/notropis/modified.gen", comment="Fmax_modified.gen")
+```
+
+###Create Arlequin files
+```{bash}
+cd /home/kdye/Nmegalops/arlequin/notropis
+
+#Convert genepop to arlequin file
+/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.402.b06-2.el9.x86_64/jre/bin/java -jar /usr/local/bin/PGDSpider2-cli.jar -inputfile modified.gen -inputformat GENEPOP -outputfile modified.arp -outputformat ARLEQUIN -spid genepop_to_arp_STD.spid
+
+levels(pooled_gens$pop)
+
+#Rename populations with appropriate name
+sed -i 's/pop_10/PR2_megalops/g' modified.arp
+sed -i 's/pop_11/PR3_megalops/g' modified.arp
+sed -i 's/pop_12/PR4_megalops/g' modified.arp
+sed -i 's/pop_13/PR5_megalops/g' modified.arp
+sed -i 's/pop_14/SFC_megalops/g' modified.arp
+sed -i 's/pop_15/DRB_megalops/g' modified.arp
+sed -i 's/pop_1/DRB_amabilis/g' modified.arp
+sed -i 's/pop_2/GDL_amabilis/g' modified.arp
+sed -i 's/pop_3/PNT_amabilis/g' modified.arp
+sed -i 's/pop_4/DOC_amabilis/g' modified.arp
+sed -i 's/pop_5/PR2_amabilis/g' modified.arp
+sed -i 's/pop_6/DOC_megalops/g' modified.arp
+sed -i 's/pop_7/DRP_megalops/g' modified.arp
+sed -i 's/pop_8/IDC_megalops/g' modified.arp
+sed -i 's/pop_9/PR1_megalops/g' modified.arp
+#Now work with .arp file in Arlequin on the lab desktop...
+
+#Average F-Statistics over all loci
+# Fixation Indices
+#      FST :      0.85477
+#      FSC :      0.18738
+#      FCT :      0.82128
+
+#Percent Variation Explained
+#Among groups :  82.12778
+#Among populations within groups  :   3.34895
+#Within populations :   14.52327
+```
+
+#F'
+```{r}
+#Fst
+#standard FST : 0.78387
+#max FST : 0.85477
+
+0.78387/0.85477 = 0.9170537
+
+#Fct
+#standard FCT : 0.73403
+#max      FCT : 0.82128
+
+#Fst' = Fst/FstMAX
+
+0.73403/0.82128 = 0.8937634
+```
+
+#Check Libraries
+
+```{r}
+libraries <- subset(data.frame(sessioninfo::package_info()), attached==TRUE, c(package, loadedversion))
+```
+
+
+```{r}
+# Assuming popdata is your data frame
+AmaInds <- notr_final2.gen@strata[notr_final2.gen@strata$SPECIES == "amabilis", ]
+
+table(AmaInds$POP)
+# DOC DRB DRP GDL IDC PNT PR1 PR2 PR3 PR4 PR5 SFC 
+#   5  19   0   6   0  14   0   1   0   0   0   0 
+
+# Assuming popdata is your data frame
+MegInds <- popdata[popdata$SPECIES == "megalops", ]
+
+table(MegInds$POP)
+# DOC DRB DRP IDC PR1 PR2 PR3 PR4 PR5 SFC 
+#  21   1  39  33  10  30  29  15  38  31 
+```
 
