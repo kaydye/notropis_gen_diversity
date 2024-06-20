@@ -51,45 +51,45 @@ assign(paste("gen.",i,sep=""), gen.vcf[set.ind, ])
 
 ## Looking for fixed differences between Notropis amabilis and N megalops
 
-2. Find Homozygous
+2.Find Homozygous
 ## Finding how many tissues are homozygous at each allele
 ```{r}
 amabilis.Ho.frq <- apply(gen.amabilis@tab, 2, function(x) length(which(x==2 | is.na(x))))
 megalops.Ho.frq <- apply(gen.megalops@tab, 2, function(x) length(which(x==2 | is.na(x))))
 ```
 
-3. Find fixed loci
+3.Find fixed loci
 ## Getting loci that are fixed in all the tissues
 ```{r}
 amabilis.fixed <- amabilis.Ho.frq[amabilis.Ho.frq==nrow(gen.amabilis@tab)]
 megalops.fixed <- megalops.Ho.frq[megalops.Ho.frq==nrow(gen.megalops@tab)]
 ```
 
-4. Fixed SNPs at same allele
+4.Fixed SNPs at same allele
 ## Getting fixed SNPs found at same allele
 ```{r}
 same_allele <- names(megalops.fixed)[which(names(megalops.fixed) %in% names(amabilis.fixed))] #1934
 ```
 
-5. SNPs unique to species
+5.SNPs unique to species
 ## Getting SNPs set that is unique to the Fish
 ```{r}
 amabilis.set <- amabilis.fixed[!(names(amabilis.fixed) %in% same_allele)]
 megalops.set <- megalops.fixed[!(names(megalops.fixed) %in% same_allele)]
 ```
 
-6. Get loci names
+6.Get loci names
 ```{r}
 amabilis.names <- matrix(unlist(strsplit(names(amabilis.set),"[.]")),byrow=T, ncol=2)[,1]
 megalops.names <- matrix(unlist(strsplit(names(megalops.set),"[.]")),byrow=T, ncol=2)[,1]
 ```
 
-7. Getting Common fixed loci
+7.Getting Common fixed loci
 ```{r}
 same_loci <- megalops.names[which(megalops.names %in% amabilis.names)] #6223 
 ```
 
-8. Find loci with mulitple SNPs
+8.Find loci with mulitple SNPs
 ## Looking for loci with multiple SNPs between the samples
 
 # Formatting data
@@ -172,7 +172,7 @@ Groups <- data.frame(Groups[-1,])
 for(i in 2:4){Groups[,i] <- as.numeric(as.character(Groups[,i]))}
 ```
 
-9. Final number loci & SNPs
+9.Final number loci & SNPs
 ```{r}
 dim(Groups) 
 dim(dat_set) 
@@ -218,7 +218,7 @@ loci <- loci %>%
   filter("SNPs" > 1) #retained 1539
 ```
                          
-2. Filter SNPs < 30 bp of start of locus (room for primer binding)
+2.Filter SNPs < 30 bp of start of locus (room for primer binding)
 ```{r}
 snps <- snps %>%
   filter(POS > 30) #6007
@@ -227,7 +227,7 @@ loci <- loci %>%
   filter(CHROM %in% snps$CHROM) #1535
 ```
 
-3. Filter SNPs > 20 bp apart 
+3.Filter SNPs > 20 bp apart 
 #need to retain snps that are within 20 bp of each other for a probe (Again, more SNPs can increase probe specificity)                        
 ```{r}
 snps <- snps %>%
@@ -238,7 +238,7 @@ loci <- loci %>%
   filter(CHROM %in% snps$CHROM) #254
 ```
 
-4. Filter SNPs < 30 bp of end (Again, for primer binding)
+4.Filter SNPs < 30 bp of end (Again, for primer binding)
 ```{r}
 #Need to first determine where end of loci is
 
