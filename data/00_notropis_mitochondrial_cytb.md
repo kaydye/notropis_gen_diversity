@@ -51,7 +51,7 @@ cat Notropis_cytb_consensus_rename.fasta ../outgroups/*linear.fasta > all.fasta
 ```
 
 ###### Check alignment manually using UGene
-   * Reimport alignment as ugene_alignment.fasta
+  ###### * Reimport alignment as ugene_alignment.fasta
 
 #### Trim
 ###### Linearize multi-fasta for trimming
@@ -64,17 +64,17 @@ awk '/^>/ {if (seq != "") {print seq; seq="";} print; next} {seq = seq $0} END {
 awk '/^>/ {if (seq != "") {print substr(seq,27,length(seq)-55); seq="";} print; next} {seq = seq $0} END {if (seq != "") print substr(seq,27,length(seq)-55)}' linear_alignment.fasta > trimmed_alignment.fasta
 ```
 
-<span style="color:red">*Trimmed alignment contains 1,121 bp and 56 individuals + outgroups*</span> 
-<span style="color:blue">some *This is Blue italic.* text</span>
+*Trimmed alignment contains 1,121 bp and 56 individuals + outgroups*
 
 #### Run model test
 ```{bash}
 modeltest−ng −i alignment_mega.fa 
 ```      
 
-#### Phylogenetic Reconstruction (BEAST)
+#### Phylogenetic Reconstruction - Bayesian analysis
 
-###### Beauti  
+###### Beauti
+###### run five times 
 ```{GUI}
 Use Beauti to make xml
     Import alignment alignment_mega.fa
@@ -103,8 +103,7 @@ Weight:             0.7341
     treelog : notropis_1
     
   File > save as > notropis_1.xml
-```
-###### run five times  
+``` 
 
 #### BEAST
 ```{GUI}
