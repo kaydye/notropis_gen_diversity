@@ -39,7 +39,7 @@ head(gen.vcf@strata)
 rm(vcf)
 ```
 
-1. Split species
+1.Split species
 ## Make independent datasets for each species
 ```{r}
 Species <- names(table(popdata$SPECIES))
