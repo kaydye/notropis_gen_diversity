@@ -8,10 +8,10 @@ editor_options:
 
 #Load libraries and source files
 ```{r}
-library('vcfR')
-library('adegenet')
-library('dartR')
-library('zvau')
+library(vcfR)
+library(adegenet)
+library(dartR)
+library(zvau)
 library(ggcompoplot)
 
 source("/home/kdye/bin/genind.R")
