@@ -6,7 +6,10 @@ editor_options:
   chunk_output_type: console
 ---
 
-#Load libraries
+
+#NEW HYBRIDS-------------
+
+#Load libraries and source files
 ```{r}
 library(openxlsx)
 ```
@@ -141,3 +144,175 @@ writeData(wb, "run5", dat5)
 addWorksheet(wb, sheetName = "Summary")
 saveWorkbook(wb, "/home/kdye/Nmegalops/hybrid/newhybrids/cytb/MxA.xlsx", overwrite = TRUE)
 ```
+
+
+#ADEGENET - HYBRIDIZE-------------
+
+#Adegenet Hybrid simulations
+
+#Load libraries and source files
+```{r}
+library(adegenet)
+library(vcfR)
+library(reshape2)
+library(ggplot2)
+library(ggforce)
+
+source("/home/kdye/bin/genind.R")
+source("/home/kdye/bin/PCA.R")
+source("/home/kdye/bin/libraries.R")
+source("/home/kdye/bin/ggplot.R")
+source("/home/kdye/bin/VCFfilterstats.R")
+```
+
+#Input files
+
+1) vcf file
+```{bash}
+cp -s ../../../genpops/notr_final.recode.vcf .
+```
+
+#Read in popdata
+  ##filter to retain cyt b individuals
+```{r}
+popdata <- read.csv(file = "/home/kdye/Nmegalops/pop.data.csv", header = TRUE)
+
+cytb <- popdata %>%
+  filter(CYTB == "Y")
+
+non_cytb <- popdata %>%
+  filter(CYTB == "N") %>%
+  select(INDV)
+```
+
+2) File of individuals in group 1
+```{r}
+ama <- popdata %>%
+  filter(SPECIES == "amabilis") %>%
+  select(INDV)
+
+write.table(ama, "/home/kdye/Nmegalops/adegenet/cytb/amabilis",
+col.names = FALSE, row.names = FALSE, quote = FALSE)
+```
+
+3) File of individuals in group 2
+```{r}
+meg <- popdata %>%
+  filter(SPECIES == "megalops") %>%
+  select(INDV)
+
+write.table(meg, "/home/kdye/Nmegalops/adegenet/cytb/megalops",
+col.names = FALSE, row.names = FALSE, quote = FALSE)
+```
+
+#Making the input files
+```{bash}
+cd ~/Nmegalopsadegenet/cytb
+
+#Adding a header
+echo -e "Sample_ID\tSpecies"> species.txt
+#Adding species 1 individuals and the species
+awk -v OFS="\t" '{print $0, "amabilis"}' ~/Nmegalops/adegenet/cytb/amabilis >> species.txt
+#Adding species 2 individuals and the species
+awk -v OFS="\t" '{print $0, "megalops"}' ~/Nmegalops/adegenet/cytb/megalops >> species.txt
+```
+
+#Importing data
+```{r}
+vcf <- read.vcfR(file = "~/Nmegalops/adegenet/cytb/notr_final.recode.vcf")
+gen.vcf <- vcfR2genind(vcf)
+
+#Assign strata
+strata(gen.vcf) <- popdata[match(indNames(gen.vcf),popdata$INDV),]
+setPop(gen.vcf) <- ~SPECIES
+
+remove_non_cytb <- non_cytb$INDV
+cytb.gen <- gen.ind.rem.Ind(gen.vcf, remove_non_cytb)
+
+#Re-assign strata
+strata <- read.table(file = "~/Nmegalops/adegenet/cytb/species.txt", header = TRUE, sep="\t")
+strata(cytb.gen) <- strata[match(indNames(cytb.gen),strata$Sample_ID),]
+head(cytb.gen@strata)
+
+rm(vcf)
+
+#Define Strata
+setPop(cytb.gen) <- ~Species
+temp <- seppop(cytb.gen)
+ama <- temp$`amabilis`
+meg <- temp$`megalops`
+
+#Simulate samples
+F1 <- hybridize(ama, meg, n = 100, pop = "amaxmeg")
+ama_bx <- hybridize(ama, F1, n = 100, pop = "ama_bx")
+meg_bx <- hybridize(meg, F1, n = 100, pop = "meg_bx")
+F2 <- hybridize(F1, F1, n= 100, pop = "F1XF1")
+pooled_gens <- repool(gen.vcf, F1, ama_bx, meg_bx, F2)
+
+save(pooled_gens, file="~/Nmegalops/adegenet/cytb/ama_x_meg_sims.gz", compress=T)
+#pooled_gens <- load("~/Nmegalops/adegenet/cytb/ama_x_meg_sims.gz")
+```
+
+#Visualize results
+
+#PCA
+
+```{r}
+#Run PCA
+x <- scaleGen(pooled_gens, NA.method = "mean")
+pca <- dudi.pca(x,center = FALSE, scale = FALSE, scannf = FALSE, nf = 4)
+eig <- eigenvalues(pca)
+```
+
+#Plot
+```{r}
+# Define colors
+map_colors <- c("#007eb0", "#b53333")
+
+col <- c("#007eb0", "#b53333", 'darkorchid3', "darkorange3",'#799c41', '#000000')
+
+# Assuming pca$li contains the principal component scores
+# Assuming pop(pooled_gens) contains the group information
+
+# Calculate means and standard deviations for each group along Axis1 and Axis2
+group_means <- aggregate(pca$li[, c("Axis1", "Axis2")], by = list(pop(pooled_gens)), FUN = mean)
+group_sds <- aggregate(pca$li[, c("Axis1", "Axis2")], by = list(pop(pooled_gens)), FUN = sd)
+
+# Set the desired confidence level for the ellipses
+confidence_level <- 0.95
+
+# Calculate the radius of the circles based on the standard deviations
+group_sds$radius_dim1 <- group_sds$Axis1 * qnorm(confidence_level)
+group_sds$radius_dim2 <- group_sds$Axis2 * qnorm(confidence_level)
+
+# Create a data frame for plotting the circles
+circle_data <- merge(group_means, group_sds, by = "Group.1")
+circle_data <- circle_data[, c("Group.1", "Axis1.x", "Axis2.x", "radius_dim1", "radius_dim2")]
+colnames(circle_data) <- c("group", "center_axis1", "center_axis2", "radius_dim1", "radius_dim2")
+
+#remove elipsis from amabilis and megalops individuals
+circle_data_subset <- circle_data[-c(2,6), ]
+
+# Reorder levels in the dataframe
+pca$li$pop_pooled_gens <- factor(pop(pooled_gens), levels = c("megalops", "amabilis", "amaxmeg", "ama_bx", "meg_bx", "F1XF1"))
+#pca$li$pop_pooled_gens <- factor(pca$li$pop_pooled_gens, levels = c("megalops", "amabilis", "amaxmeg", "ama_bx", "meg_bx", "F1XF1"))
+
+#Kayla's ggplot  
+#created a subset to remove the ellipse from the data points.. 
+ggplot() +
+  geom_point(data = pca$li[1:length(indNames(gen.vcf)),], 
+             aes(x = Axis1, y = Axis2, fill = as.factor(pop_pooled_gens[1:length(indNames(gen.vcf))])),
+             size = 2, shape = 21) +
+    labs(x = paste("Axis1:", round(eig[1, 3], digits = 3), "%"),
+       y = paste("Axis2:", round(eig[2, 3], digits = 3), "%")) +
+  scale_fill_manual(values = map_colors, 
+                    limits = c("megalops", "amabilis")) +
+  geom_ellipse(data = circle_data_subset, aes(x0 = center_axis1, y0 = center_axis2, 
+                                       a = radius_dim1*4, b = radius_dim2*4, 
+                                       angle = 0, 
+                                       group = group, color = group), size = 0.3) +
+                 scale_color_manual(values = col[3:6], 
+                     limits = c("amaxmeg", "ama_bx", "meg_bx", "F1XF1")) +
+  theme_bw() + 
+  labs(fill = "Species", color = "Simulation")
+
