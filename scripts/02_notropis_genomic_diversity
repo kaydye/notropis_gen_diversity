@@ -1,18 +1,18 @@
 ---
-title: "Notropis_ddRAD_040224"
+title: "Notropis genomic diversity: Notropis megalops vs N. amabilis"
 author: "K. Dye"
-date: "2024-04-09"
 output: html_document
 editor_options: 
   chunk_output_type: console
 ---
 
-#Load libraries
+#Load libraries and source files
 ```{r}
 library('vcfR')
 library('adegenet')
 library('dartR')
 library('zvau')
+library(ggcompoplot)
 
 source("/home/kdye/bin/genind.R")
 source("/home/kdye/bin/PCA.R")
@@ -20,6 +20,7 @@ source("/home/kdye/bin/libraries.R")
 source("/home/kdye/bin/ggplot.R")
 ```
 
+#Choose colors
 ```{r}
 site_colors <- c("#F5453E", "#04DC7A", "#028BCC", "#FF8142","#C161FF" )
 
@@ -35,29 +36,23 @@ popdata <- read.csv(file = "/home/kdye/Nmegalops/data/pop.data.csv", header = TR
 
 #set strata
 strata(notr_final.gen) <- popdata[match(indNames(notr_final.gen),popdata[,1]),]
-head(notr_final.gen@strata) # ensure strata correct
+head(notr_final.gen@strata)
 ```
 
 #DAPC
 
-K-means was used to identify the genetic clusters (i.e. the individuals of each species) to ensure all of one species was not lost through out the filtering process.
-
+## K-means was used to identify the genetic clusters (i.e. the individuals of each species) 
 ```{r}
 #Assign strata
 setPop(notr_final.gen) <- ~SPECIES
 
 #Defining groups
-#Picking a specific K
+#Picking a specific K of 2 
 grp <- find.clusters(notr_final.gen, max.n.clust=40, n.pca=400, n.clust =2, method="kmeans")
 
 #Comparing K groups to predefined groupings 
 setPop(notr_final.gen)<- ~SPECIES
 table(pop(notr_final.gen), grp$grp)
-
-#             1   2
-#  megalops  241  0
-#  amabilis   0  45
-
 
 #Centering genind object
 X <- scaleGen(notr_final.gen, NA.method="mean", scale=F)
@@ -68,32 +63,11 @@ xval <- xvalDapc(X, grp$grp, n.pca.max = 300, training.set = 0.9, result = "grou
 #Outputting the cross-validation results
 xval[2:6]
 
-# $`Median and Confidence Interval for Random Chance`
-#      2.5%       50%     97.5% 
-# 0.4461964 0.4989396 0.5648686 
-# 
-# $`Mean Successful Assignment by Number of PCs of PCA`
-#  20  40  60  80 100 120 140 160 180 200 220 240 
-#   1   1   1   1   1   1   1   1   1   1   1   1 
-# 
-# $`Number of PCs Achieving Highest Mean Success`
-# [1] "20"
-# 
-# $`Root Mean Squared Error by Number of PCs of PCA`
-#  20  40  60  80 100 120 140 160 180 200 220 240 
-#   0   0   0   0   0   0   0   0   0   0   0   0 
-# 
-# $`Number of PCs Achieving Lowest MSE`
-# [1] "240"
-
-
 ##Plotting DAPC results
 setPop(notr_final.gen)<- ~SPECIES
 
 #Scatter plot
 scatter(xval$DAPC, scree.da=FALSE, cell=0, cex=3, bg="white",cstar=0)
-
-library(ggcompoplot)
 
 #Compoplot
 p.comp<-ggcompoplot(xval$DAPC, notr_final.gen, cols=2, pal=rev_map_colors) + theme(axis.text.x = element_blank()) + ggtitle("K-means 2 Groups (3,742 loci)")
@@ -142,18 +116,11 @@ PCA <- ggplot(PC_Inds, aes(x = Axis1, y = (Axis2*-1))) +
   theme_standard
 
 PCA
-#6x10
-```
-
-#Tree
-```{bash}
-#did not do, keeping just in case.
-#sed -E 's/^>([^ ]+).* isolate ([^ ]+).*/>\2/' kevincytb_all.fasta > kevinrename_all.fasta
-
-#iqtree -s kevinrename.fasta -m TEST -B 1000 --prefix kevin_cytb
 ```
 
 #Arlequin
+
+#Run F statistics
 
 ```{r}
 #Assign strata
@@ -166,7 +133,7 @@ setPop(notr_final.gen) <- ~POP/SPECIES
 writeGenPop(notr_final.gen, file.name = "/home/kdye/Nmegalops/arlequin/notropis/notropis.gen", comment = "notropis.gen")
 ```
 
-###Create Arlequin files
+## Create Arlequin files
 ```{bash}
 cd /home/kdye/Nmegalops/arlequin/notropis
 
@@ -191,64 +158,56 @@ sed -i 's/pop_6/PNT_amabilis/g' notropis.arp
 sed -i 's/pop_7/PR1_megalops/g' notropis.arp
 sed -i 's/pop_8/PR2_megalops/g' notropis.arp
 sed -i 's/pop_9/PR3_megalops/g' notropis.arp
-#Now work with .arp file in Arlequin on the lab desktop...
 
-#Average F-Statistics over all loci
-# Fixation Indices
-#      FST :      0.78387
-#      FSC :      0.18738
-#      FCT :      0.73403
-
-#Percent Variation Explained
-#Among groups :  73.40302
-#Among populations within groups  :   4.98383
-#Within populations :   21.61315
-
+#Now work with .arp file in Arlequin GUI
 ```
 
 #Fst MAX
+
+## Recode the alleles for one of the species in such a way that no alleles are shared between species 
+  ## Added 100 to all of the alleles of N.megalops 
 ```{r}
 #separate the notr_final.gen into species
 
 #amabilis.gen
-MegInds <- filter(popdata, str_detect(SPECIES, "megalops")) #247
+MegInds <- filter(popdata, str_detect(SPECIES, "megalops"))
 
 rm_megalops <- MegInds$INDV
 
-amabilis.gen <- gen.ind.rem.Ind(notr_final.gen, rm_megalops) #45 individuals
+amabilis.gen <- gen.ind.rem.Ind(notr_final.gen, rm_megalops) 
 
 #megalops.gen
-AmaInds <- filter(popdata, str_detect(SPECIES, "amabilis")) #46
+AmaInds <- filter(popdata, str_detect(SPECIES, "amabilis"))
 
 rm_amabilis <- AmaInds$INDV
 
-megalops.gen <- gen.ind.rem.Ind(notr_final.gen, rm_amabilis) #241 individuals
+megalops.gen <- gen.ind.rem.Ind(notr_final.gen, rm_amabilis)
 
-#change the allele "names" megalops.gen@all.names
+#Change the allele "names" in megalops.gen@all.names
 modified <- sub("^\\d", "1", megalops.gen@all.names)
 
-# Function to modify the numbers in each vector
+#Function to modify the numbers in each vector
 modify_numbers <- function(vec) {
   modified_vec <- sub("^\\d", "1", vec)
   return(modified_vec)
 }
 
-# Apply the modification function to each vector in the list
+#Apply the modification function to each vector in the list
 modified_list <- lapply(megalops.gen@all.names, modify_numbers)
 
-#put the list back into the genind
+#Add the list back into the genind
 megalops.gen@all.names <- modified_list
 
-#repool the geninds back together
+#Repool the geninds back together
 pooled_gens <- repool(amabilis.gen, megalops.gen)
 
-#set pop
+#Set pop by population and species as there are locations with both species present
 setPop(pooled_gens) <- ~POP/SPECIES
 
 writeGenPop(pooled_gens, file.name = "/home/kdye/Nmegalops/arlequin/notropis/modified.gen", comment="Fmax_modified.gen")
 ```
 
-###Create Arlequin files
+#Create Arlequin files
 ```{bash}
 cd /home/kdye/Nmegalops/arlequin/notropis
 
@@ -288,6 +247,7 @@ sed -i 's/pop_9/PR1_megalops/g' modified.arp
 ```
 
 #F'
+
 ```{r}
 #Fst
 #standard FST : 0.78387
@@ -303,27 +263,3 @@ sed -i 's/pop_9/PR1_megalops/g' modified.arp
 
 0.73403/0.82128 = 0.8937634
 ```
-
-#Check Libraries
-
-```{r}
-libraries <- subset(data.frame(sessioninfo::package_info()), attached==TRUE, c(package, loadedversion))
-```
-
-
-```{r}
-# Assuming popdata is your data frame
-AmaInds <- notr_final2.gen@strata[notr_final2.gen@strata$SPECIES == "amabilis", ]
-
-table(AmaInds$POP)
-# DOC DRB DRP GDL IDC PNT PR1 PR2 PR3 PR4 PR5 SFC 
-#   5  19   0   6   0  14   0   1   0   0   0   0 
-
-# Assuming popdata is your data frame
-MegInds <- popdata[popdata$SPECIES == "megalops", ]
-
-table(MegInds$POP)
-# DOC DRB DRP IDC PR1 PR2 PR3 PR4 PR5 SFC 
-#  21   1  39  33  10  30  29  15  38  31 
-```
-
