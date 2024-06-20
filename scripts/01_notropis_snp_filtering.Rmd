@@ -1,7 +1,6 @@
 ---
-title: "Notropis_SNP_filtering"
+title: "Notropis filtering"
 author: "K. Dye"
-date: "2024-04-02"
 output: html_document
 editor_options: 
   chunk_output_type: console
