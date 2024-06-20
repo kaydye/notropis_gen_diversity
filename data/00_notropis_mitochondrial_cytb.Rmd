@@ -1,29 +1,21 @@
 ---
-title: "Notropis_cytb_013024"
+title: "notropis_mitochondrial_cytb"
 author: "K. Dye"
 date: "2024-01-30"
 output: html_document
 ---
 
-#Transfer data
+#Obtain data
 ```{bash}
-mkdir cytb
-cd cytb
-mkdir data
-cd data
-#transfer in the zipped file with the sequence data to the data directory using Cyberduck
-
 unzip raw_seq_kd.zip
-#now have a list of the ab1 files for the forward and reverse reads of each individual
 ```
+#Should have a list of the ab1 files for the forward and reverse reads of each individual
 
-
-#Forward and reverse sequences (ab1 files) aligned using Geneious and consensus fasta files for each individual are made.
+#Forward and reverse sequences (ab1 files) aligned using Geneious and consensus fasta files for each individual were made.
   ##Some individuals were removed due to poor sequence quality
     ###removed NM-116, NM-230, NM-259, NM-320
-    ###dDocent rename (IDC_031, SFC_028, PNT_013, DOC_015)
-  ##Consensus sequences are in /data/Notropis_cytb_consensus.fasta
-  ##Outgroup fasta sequences obtained from GenBank
+  ##Consensus sequences are in /data/Notorpis_consensus_seqs
+  ##Outgroup fasta sequences obtained from GenBank, found in /data/Notropis_outgroup_seqs
 
 #Remove header from outgroup fasta files
 ```{bash}
@@ -62,7 +54,7 @@ cat Notropis_cytb_consensus_rename.fasta ../outgroups/*linear.fasta > all.fasta
 ../programs/bin/bin/clustalo -i all.fasta -o test.fasta --outfmt=fasta
 ```
 
-#Check alignment by eye using UGene
+#Check alignment manually using UGene
 Reimport alignment as ugene_alignment.fasta
 
 #Trim
@@ -76,95 +68,14 @@ awk '/^>/ {if (seq != "") {print seq; seq="";} print; next} {seq = seq $0} END {
 awk '/^>/ {if (seq != "") {print substr(seq,27,length(seq)-55); seq="";} print; next} {seq = seq $0} END {if (seq != "") print substr(seq,27,length(seq)-55)}' linear_alignment.fasta > trimmed_alignment.fasta
 ```
 
-***Trimmed alignment contains 1,121 bp and 56 individuals***
-
 ***Trimmed alignment contains 1,121 bp and 56 individuals + outgroups***
 
 #Run model test
 ```{bash}
 modeltest−ng −i alignment_mega.fa 
-
-#Results
-
-Best model according to BIC
----------------------------
-Model:              TrN+I+G4
-lnL:                -4841.1534
-Frequencies:        0.2590 0.3093 0.1430 0.2888
-Subst. Rates:       1.0000 54.6190 1.0000 1.0000 9.8690 1.0000
-Inv. sites prop:    0.6265
-Gamma shape:        2.7361
-Score:              10623.2517
-Weight:             0.7341
----------------------------
-Parameter importances
----------------------------
-P.Inv:              0.0121
-Gamma:              0.0000
-Gamma-Inv:          0.9878
-Frequencies:        1.0000
----------------------------
-Model averaged estimates
----------------------------
-P.Inv:              0.6174
-Alpha:              0.1432
-Alpha-P.Inv:        2.6984
-P.Inv-Alpha:        0.6236
-Frequencies:        0.2591 0.3089 0.1426 0.2894
-
-                         Model         Score        Weight
-----------------------------------------------------------
-       BIC            TrN+I+G4    10623.2517        0.7341
-       AIC            GTR+I+G4     9947.5776        0.4271
-      AICc            GTR+I+G4     9985.5776        0.2868
-
-#04-13-24
-
-modeltest−ng −i final_trim.fasta 
-
-Best model according to BIC
----------------------------
-Model:              TrN+I+G4
-lnL:                -4840.5020
-Frequencies:        0.2600 0.3105 0.1406 0.2889
-Subst. Rates:       1.0000 52.2687 1.0000 1.0000 9.1658 1.0000 
-Inv. sites prop:    0.6185
-Gamma shape:        3.4150
-Score:              10621.9489
-Weight:             0.5655
----------------------------
-Parameter importances
----------------------------
-P.Inv:              0.1551
-Gamma:              0.0000
-Gamma-Inv:          0.8449
-Frequencies:        1.0000
----------------------------
-Model averaged estimates
----------------------------
-P.Inv:              0.6154
-Alpha:              0.1468
-Alpha-P.Inv:        3.3904
-P.Inv-Alpha:        0.6184
-Frequencies:        0.2602 0.3099 0.1401 0.2898 
-
-Commands:
-  > phyml  -i final_trim.fasta -m 010020 -f m -v e -a e -c 4 -o tlr
-  > raxmlHPC-SSE3 -s final_trim.fasta -m GTRGAMMAIX -n EXEC_NAME -p PARSIMONY_SEED
-  > raxml-ng --msa final_trim.fasta --model TrN+I+G4
-  > paup -s final_trim.fasta
-  > iqtree -s final_trim.fasta -m TrN+I+G4
-
-
-Partition 1/1:
-                         Model         Score        Weight
-----------------------------------------------------------
-       BIC            TrN+I+G4    10621.9489        0.5655
-       AIC            GTR+I+G4     9945.6561        0.4171
-      AICc           TIM2+I+G4     9983.4451        0.3139
 ```      
 
-#Bayesian (BEAST)
+#Phylogenetic Reconstruction (BEAST)
 
 ###Beauti - make xml 
 ```{GUI}
@@ -207,7 +118,6 @@ Run
 #Tracer
 ```{GUI}
 #look at log file from each BEAST run 
-#want ESS over 100, best over 200
 ```
 
 #Tree Annotator
